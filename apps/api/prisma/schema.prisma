@@ -1,0 +1,234 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Employees & Admins ───────────────────────────────────────────────────────
+
+model Employee {
+  id            String    @id @default(cuid())
+  name          String
+  gender        Gender
+  phone         String    @unique
+  role          Role      @default(EMPLOYEE)
+  defaultSiteId String?
+  defaultSite   Site?     @relation(fields: [defaultSiteId], references: [id])
+  status        EmpStatus @default(ACTIVE)
+  joinedAt      DateTime  @default(now())
+  exitedAt      DateTime?
+  // Set by admin; bcrypt hash. Null until admin assigns first password.
+  passwordHash  String?
+  // DPDP Act: timestamp when employee accepted photo/GPS data collection
+  consentAt     DateTime?
+  punches       Punch[]
+  leaveRequests LeaveRequest[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([defaultSiteId])
+  @@index([status])
+}
+
+// Multiple admins supported from schema day-one; only one created at launch (Phase 1).
+// Adding a second admin in Phase 3 needs no schema change.
+model Admin {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── Sites ────────────────────────────────────────────────────────────────────
+
+model Site {
+  id        String     @id @default(cuid())
+  name      String
+  address   String?
+  status    SiteStatus @default(ACTIVE)
+  employees Employee[]
+  punches   Punch[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+// ─── Punches ─────────────────────────────────────────────────────────────────
+
+model Punch {
+  id              String         @id @default(cuid())
+  employeeId      String
+  employee        Employee       @relation(fields: [employeeId], references: [id])
+  siteId          String
+  site            Site           @relation(fields: [siteId], references: [id])
+  type            PunchType
+  // Server-assigned timestamp is authoritative — prevents device time spoofing
+  timestampServer DateTime       @default(now())
+  // Device-captured time kept for audit trail (used in offline sync reconciliation)
+  timestampDevice DateTime
+  lat             Float
+  long            Float
+  // GPS accuracy in metres; 0 means unavailable; stored for admin review — no geofence enforcement
+  accuracy        Float
+  // Reverse-geocoded address captured on device at punch time (e.g. "Dwaraka Nagar, Bengaluru - 560098")
+  address         String  @default("")
+  // R2 object key (not a public URL) — dashboard fetches signed URL via /admin/punches/:id/photo-url
+  photoKey        String
+  approvalStatus  ApprovalStatus @default(PENDING)
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  // true when punch was captured offline and synced later
+  syncedOffline   Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([employeeId, timestampServer])
+  @@index([siteId, timestampServer])
+  @@index([approvalStatus])
+  @@index([timestampServer])
+}
+
+// ─── Leave ────────────────────────────────────────────────────────────────────
+
+// Admin-configurable leave types (no hardcoded CL/Female Leave — both seeded as rows).
+// New leave types (Maternity, Paternity, etc.) added via Admin Settings, no rebuild.
+model LeaveType {
+  id                   String       @id @default(cuid())
+  name                 String
+  daysEntitled         Float
+  scope                LeaveScope
+  paid                 Boolean      @default(true)
+  carryForward         Boolean      @default(false)
+  // Employee must be employed at least this many months before eligible
+  eligibilityMinMonths Int          @default(0)
+  approvalMode         ApprovalMode @default(MANUAL)
+  maxConsecutiveDays   Int?
+  accrual              AccrualType  @default(MONTHLY)
+  isActive             Boolean      @default(true)
+  requests             LeaveRequest[]
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+}
+
+model LeaveRequest {
+  id              String         @id @default(cuid())
+  employeeId      String
+  employee        Employee       @relation(fields: [employeeId], references: [id])
+  leaveTypeId     String
+  leaveType       LeaveType      @relation(fields: [leaveTypeId], references: [id])
+  fromDate        DateTime
+  toDate          DateTime
+  reason          String?
+  status          ApprovalStatus @default(PENDING)
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([fromDate, toDate])
+}
+
+// ─── Holidays & Calendar ──────────────────────────────────────────────────────
+
+model Holiday {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  name        String
+  // null = company-wide; set to a siteId for site-specific closures
+  siteId      String?
+  // true for recurring weekly-off entries (e.g. Sunday) — handled differently from fixed holidays
+  isWeeklyOff Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@index([siteId])
+  // Prevent duplicate holiday entries for the same date+site combination
+  @@unique([date, siteId], name: "unique_holiday_per_date_site")
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+// Key-value store for all Admin-configurable settings.
+// Values are strings/JSON; parsed in SettingsService.
+// See seed.ts for the full initial set seeded at launch.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// ─── OTP ─────────────────────────────────────────────────────────────────────
+
+// Short-lived OTP records for employee phone authentication.
+// Used (consumed) records are kept briefly for audit; a cleanup job prunes them.
+model OtpRecord {
+  id        String   @id @default(cuid())
+  phone     String
+  otp       String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([phone, expiresAt])
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum Role {
+  EMPLOYEE
+  SITE_MANAGER
+  ADMIN
+}
+
+enum EmpStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+enum SiteStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PunchType {
+  IN
+  OUT
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LeaveScope {
+  ALL
+  MALE_ONLY
+  FEMALE_ONLY
+  CUSTOM
+}
+
+enum ApprovalMode {
+  AUTO
+  MANUAL
+}
+
+enum AccrualType {
+  MONTHLY
+  ANNUAL
+}

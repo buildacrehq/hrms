@@ -1,0 +1,33 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: buildacre
+      POSTGRES_PASSWORD: buildacre_dev
+      POSTGRES_DB: buildacre_workforce
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U buildacre -d buildacre_workforce']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Lightweight DB browser — open http://localhost:8080 in browser
+  # System: PostgreSQL | Server: postgres | User: buildacre | Password: buildacre_dev | DB: buildacre_workforce
+  adminer:
+    image: adminer:4-standalone
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

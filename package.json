@@ -1,0 +1,26 @@
+{
+  "name": "buildacre-workforce",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "api:dev": "turbo dev --filter=@buildacre/api",
+    "api:migrate": "pnpm --filter=@buildacre/api db:migrate",
+    "api:generate": "pnpm --filter=@buildacre/api db:generate",
+    "api:seed": "pnpm --filter=@buildacre/api db:seed",
+    "api:studio": "pnpm --filter=@buildacre/api db:studio",
+    "db:up": "docker-compose up -d",
+    "db:down": "docker-compose down",
+    "db:reset": "docker-compose down -v && docker-compose up -d"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

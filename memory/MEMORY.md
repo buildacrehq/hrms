@@ -1,0 +1,1 @@
+- [Buildacre Workforce Project](project_buildacre.md) — monorepo in /hrms, NestJS+Flutter+Next.js, Docker Compose Postgres, build guide defines phase order
