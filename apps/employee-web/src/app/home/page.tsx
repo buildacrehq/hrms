@@ -60,31 +60,17 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 type FaceResult = { detected: boolean; error?: string };
 
 async function detectFaceOnCanvas(canvas: HTMLCanvasElement): Promise<FaceResult> {
-  // 1. Try native browser FaceDetector (Chrome Android — fast, no model download)
+  // Native FaceDetector API — instant, no model download, works on Chrome Android
   if ('FaceDetector' in window) {
     try {
       const detector = new (window as any).FaceDetector({ maxDetectedFaces: 1, fastMode: true });
       const faces = await detector.detect(canvas);
       return { detected: faces.length > 0 };
     } catch {
-      // Native detector failed, fall through to TF.js
+      return { detected: true }; // API exists but failed — allow punch
     }
   }
-
-  // 2. Try TF.js BlazeFace (lightweight model, loaded from CDN)
-  const w = window as any;
-  if (typeof w.blazeface !== 'undefined') {
-    try {
-      const model = await w.blazeface.load();
-      const predictions = await model.estimateFaces(canvas, false);
-      return { detected: predictions.length > 0 };
-    } catch {
-      // fall through
-    }
-  }
-
-  // 3. Neither available — fail open with a warning (don't block punch)
-  console.warn('Face detection unavailable, allowing punch');
+  // Not supported (iOS Safari, Firefox) — allow punch
   return { detected: true };
 }
 
