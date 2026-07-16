@@ -42,7 +42,7 @@ export default function LoginPage() {
           fontSize: 26, marginBottom: 20,
         }}>🏗️</div>
         <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.2, marginBottom: 6 }}>
-          Buildacre<br />Workforce
+          BA<br />Workforce
         </div>
         <div style={{ fontSize: 14, opacity: 0.8 }}>Attendance & site management</div>
       </div>

@@ -141,7 +141,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   child: const Icon(Icons.construction, color: Colors.white, size: 18),
                 ),
                 const SizedBox(width: 10),
-                const Text('Buildacre', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('BA', style: TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
             actions: [

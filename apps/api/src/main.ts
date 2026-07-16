@@ -28,7 +28,7 @@ async function bootstrap() {
   });
 
   const config = new DocumentBuilder()
-    .setTitle('Buildacre Workforce API')
+    .setTitle('BA Workforce API')
     .setDescription('Attendance & workforce management — shared backend for mobile app and admin dashboard')
     .setVersion('1.0')
     .addBearerAuth()

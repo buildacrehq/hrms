@@ -4,11 +4,11 @@ import 'core/providers/router.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: BuildacreApp()));
+  runApp(const ProviderScope(child: BAApp()));
 }
 
-class BuildacreApp extends ConsumerWidget {
-  const BuildacreApp({super.key});
+class BAApp extends ConsumerWidget {
+  const BAApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -16,7 +16,7 @@ class BuildacreApp extends ConsumerWidget {
     const seed = Color(0xFF1A56B0);
 
     return MaterialApp.router(
-      title: 'Buildacre Workforce',
+      title: 'BA Workforce',
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(Brightness.light, seed),
       darkTheme: _buildTheme(Brightness.dark, seed),

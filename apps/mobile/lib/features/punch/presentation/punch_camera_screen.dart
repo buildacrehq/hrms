@@ -204,7 +204,7 @@ class _PunchCameraScreenState extends State<PunchCameraScreen>
         },
         options: Options(
           headers: {
-            'User-Agent': 'BuildacreWorkforce/1.0',
+            'User-Agent': 'BA-Workforce/1.0',
             'Accept-Language': 'en',
           },
           receiveTimeout: const Duration(seconds: 8),

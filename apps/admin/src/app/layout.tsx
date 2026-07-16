@@ -6,8 +6,8 @@ import { Providers } from '@/lib/providers';
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist' });
 
 export const metadata: Metadata = {
-  title: 'Buildacre Admin',
-  description: 'Buildacre Workforce Admin Dashboard',
+  title: 'BA Admin',
+  description: 'BA Admin Dashboard',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -27,7 +27,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Sidebar */}
       <aside className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
         <div className="px-5 py-5 border-b border-gray-100">
-          <span className="font-bold text-gray-900 text-base">Buildacre</span>
+          <span className="font-bold text-gray-900 text-base">BA</span>
           <span className="text-xs text-gray-400 block">Admin Dashboard</span>
         </div>
         <nav className="flex-1 py-4 space-y-0.5 px-2">
