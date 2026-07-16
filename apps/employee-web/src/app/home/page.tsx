@@ -57,23 +57,24 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   );
 }
 
-// TF.js loaded from CDN via layout.tsx <Script> tags — accessed via window globals
-declare const tf: any;
-declare const faceDetection: any;
+type FaceResult = { detected: boolean; error?: string };
 
-async function detectFaceOnCanvas(canvas: HTMLCanvasElement): Promise<boolean> {
+async function detectFaceOnCanvas(canvas: HTMLCanvasElement): Promise<FaceResult> {
+  const w = window as any;
+  if (typeof w.tf === 'undefined' || typeof w.faceDetection === 'undefined') {
+    return { detected: false, error: 'Face detection is still loading. Please wait a moment and try again.' };
+  }
   try {
-    if (typeof tf === 'undefined' || typeof faceDetection === 'undefined') return true;
-    await tf.ready();
-    const model = await faceDetection.createDetector(
-      faceDetection.SupportedModels.MediaPipeFaceDetector,
+    await w.tf.ready();
+    const model = await w.faceDetection.createDetector(
+      w.faceDetection.SupportedModels.MediaPipeFaceDetector,
       { runtime: 'tfjs', maxFaces: 1 }
     );
     const faces = await model.estimateFaces(canvas);
     model.dispose();
-    return faces.length > 0;
+    return { detected: faces.length > 0 };
   } catch {
-    return true; // fail open — punch allowed if model can't load
+    return { detected: false, error: 'Face detection failed. Please try again.' };
   }
 }
 
@@ -162,9 +163,14 @@ export default function HomePage() {
     if (faceRequired) {
       setStep('detecting');
       setStatusMsg('Verifying face…');
-      const hasface = await detectFaceOnCanvas(canvas);
-      if (!hasface) {
-        setError('No face detected. Look directly at camera and try again.');
+      const result = await detectFaceOnCanvas(canvas);
+      if (result.error) {
+        setError(result.error);
+        setStep('idle');
+        return;
+      }
+      if (!result.detected) {
+        setError('No face detected. Look directly at the camera and try again.');
         setStep('idle');
         return;
       }
