@@ -25,10 +25,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body style={{ margin: 0, fontFamily: 'system-ui, sans-serif', background: '#f8fafc' }}>
         {children}
-        {/* TF.js loaded lazily from CDN for face detection — only when punch is initiated */}
+        {/* BlazeFace — lightweight face detection, loads after page is interactive */}
         <Script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js" strategy="lazyOnload" />
-        <Script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.22.0/dist/tf-backend-webgl.min.js" strategy="lazyOnload" />
-        <Script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection@1.0.2/dist/face-detection.min.js" strategy="lazyOnload" />
+        <Script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js" strategy="lazyOnload" />
       </body>
     </html>
   );

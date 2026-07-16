@@ -60,22 +60,32 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 type FaceResult = { detected: boolean; error?: string };
 
 async function detectFaceOnCanvas(canvas: HTMLCanvasElement): Promise<FaceResult> {
+  // 1. Try native browser FaceDetector (Chrome Android — fast, no model download)
+  if ('FaceDetector' in window) {
+    try {
+      const detector = new (window as any).FaceDetector({ maxDetectedFaces: 1, fastMode: true });
+      const faces = await detector.detect(canvas);
+      return { detected: faces.length > 0 };
+    } catch {
+      // Native detector failed, fall through to TF.js
+    }
+  }
+
+  // 2. Try TF.js BlazeFace (lightweight model, loaded from CDN)
   const w = window as any;
-  if (typeof w.tf === 'undefined' || typeof w.faceDetection === 'undefined') {
-    return { detected: false, error: 'Face detection is still loading. Please wait a moment and try again.' };
+  if (typeof w.blazeface !== 'undefined') {
+    try {
+      const model = await w.blazeface.load();
+      const predictions = await model.estimateFaces(canvas, false);
+      return { detected: predictions.length > 0 };
+    } catch {
+      // fall through
+    }
   }
-  try {
-    await w.tf.ready();
-    const model = await w.faceDetection.createDetector(
-      w.faceDetection.SupportedModels.MediaPipeFaceDetector,
-      { runtime: 'tfjs', maxFaces: 1 }
-    );
-    const faces = await model.estimateFaces(canvas);
-    model.dispose();
-    return { detected: faces.length > 0 };
-  } catch {
-    return { detected: false, error: 'Face detection failed. Please try again.' };
-  }
+
+  // 3. Neither available — fail open with a warning (don't block punch)
+  console.warn('Face detection unavailable, allowing punch');
+  return { detected: true };
 }
 
 export default function HomePage() {
