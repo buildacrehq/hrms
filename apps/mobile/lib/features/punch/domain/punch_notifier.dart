@@ -1,7 +1,5 @@
 import 'dart:io';
-import 'package:camera/camera.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../data/punch_repository.dart';
