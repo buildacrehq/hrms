@@ -133,8 +133,13 @@ export default function HomePage() {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-    } catch {
-      setError('Camera permission denied. Please allow camera access in your browser settings.');
+    } catch (err: any) {
+      const denied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+      setError(
+        denied
+          ? '📷 Camera access is required to punch. Please tap Allow when your browser asks, then try again. If you already denied it, go to your browser Settings → Site Permissions → Camera → Allow.'
+          : 'Camera not available. Please check your device.'
+      );
       setStep('idle');
     }
   }, []);
@@ -177,8 +182,13 @@ export default function HomePage() {
       lng = pos.coords.longitude;
       accuracy = pos.coords.accuracy;
       address = await reverseGeocode(lat, lng);
-    } catch {
-      setError('Could not get location. Enable GPS / location permission and try again.');
+    } catch (err: any) {
+      const denied = err?.code === 1; // PERMISSION_DENIED
+      setError(
+        denied
+          ? '📍 Location access is required to punch. Please tap Allow when your browser asks, then try again. If already denied, go to browser Settings → Site Permissions → Location → Allow.'
+          : 'Could not get location. Make sure GPS is turned on and try again.'
+      );
       setStep('idle');
       return;
     }
