@@ -77,6 +77,13 @@ export default function DashboardPage() {
   const siteQ    = useQuery({ queryKey: ['sites'],                queryFn: () => api.get('/admin/sites').then(r => r.data.data) });
   const punchQ   = useQuery({ queryKey: ['punches-today', today], queryFn: () => api.get('/admin/punches', { params: { date: today } }).then(r => r.data.data), refetchInterval: 30_000 });
   const pendingQ = useQuery({ queryKey: ['pending'],              queryFn: () => api.get('/admin/punches/pending').then(r => r.data.data), refetchInterval: 10_000 });
+  const leaveQ   = useQuery({
+    queryKey: ['leaves-today', today.slice(0, 7)],
+    queryFn: () => api.get('/admin/leaves/requests', {
+      params: { status: 'APPROVED', year: today.slice(0, 4), month: String(parseInt(today.slice(5, 7), 10)) }
+    }).then(r => r.data.data ?? r.data),
+    refetchInterval: 60_000,
+  });
 
   const employees = empQ.data?.employees  ?? [];
   const sites     = siteQ.data            ?? [];
@@ -94,14 +101,21 @@ export default function DashboardPage() {
   const attendanceRate  = activeEmployees.length > 0 ? Math.round((todayIn / activeEmployees.length) * 100) : 0;
   const circumference   = 2 * Math.PI * 50;
 
-  // Absent today = active employees with no IN punch
+  // Absent today = active employees with no IN punch AND not on approved leave
   const punchedInIds = useMemo(() =>
     new Set(punches.filter((p: any) => p.type === 'IN').map((p: any) => p.employee.id)),
     [punches]
   );
+  const onLeaveIds: Set<string> = useMemo(() => {
+    const s = new Set<string>();
+    (leaveQ.data ?? []).forEach((lr: any) => {
+      if (today >= lr.fromDate.slice(0, 10) && today <= lr.toDate.slice(0, 10)) s.add(lr.employee.id);
+    });
+    return s;
+  }, [leaveQ.data, today]);
   const absentToday = useMemo(() =>
-    activeEmployees.filter((e: any) => !punchedInIds.has(e.id)),
-    [activeEmployees, punchedInIds]
+    activeEmployees.filter((e: any) => !punchedInIds.has(e.id) && !onLeaveIds.has(e.id)),
+    [activeEmployees, punchedInIds, onLeaveIds]
   );
 
   const recent = [...punches]

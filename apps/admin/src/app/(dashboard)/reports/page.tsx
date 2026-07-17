@@ -152,13 +152,14 @@ function DailyReport() {
 ───────────────────────────────────────────── */
 const WEEK_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-type CellState = 'P' | 'A' | 'W' | 'U' | 'H' | '-';
+type CellState = 'P' | 'A' | 'W' | 'U' | 'H' | 'L' | '-';
 
 interface CellCfg { label: string; bg: string; text: string; title: string }
 const CELL: Record<CellState, CellCfg> = {
   P: { label: 'P', bg: '#dcfce7', text: '#15803d', title: 'Present'      },
   U: { label: 'U', bg: '#fef9c3', text: '#92400e', title: 'Unverified'   },
   A: { label: 'A', bg: '#fee2e2', text: '#b91c1c', title: 'Absent'       },
+  L: { label: 'L', bg: '#e0f2fe', text: '#0369a1', title: 'On Leave'     },
   W: { label: 'W', bg: '#f1f5f9', text: '#94a3b8', title: 'Weekly Off'   },
   H: { label: 'H', bg: '#ede9fe', text: '#6d28d9', title: 'Holiday'      },
   '-': { label: '–', bg: '#f8fafc', text: '#cbd5e1', title: 'Future/NA'  },
@@ -189,6 +190,10 @@ function MonthlyReport() {
     queryKey: ['holidays', year],
     queryFn: () => api.get('/admin/holidays', { params: { year } }).then(r => r.data.data),
   });
+  const leaveQ = useQuery({
+    queryKey: ['report-leaves', year, month],
+    queryFn: () => api.get('/admin/leaves/requests', { params: { status: 'APPROVED', year: String(year), month: String(month + 1) } }).then(r => r.data.data ?? r.data),
+  });
 
   const employees  = empQ.data?.employees?.filter((e: any) => e.status === 'ACTIVE') ?? [];
   const punches    = punchQ.data?.punches ?? [];
@@ -198,6 +203,23 @@ function MonthlyReport() {
     (holidayQ.data ?? []).forEach((h: any) => s.add(h.date.slice(0, 10)));
     return s;
   }, [holidayQ.data]);
+
+  // Build per-employee set of approved leave dates
+  const leaveMap: Map<string, Set<string>> = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    (leaveQ.data ?? []).forEach((lr: any) => {
+      const from = new Date(lr.fromDate);
+      const to   = new Date(lr.toDate);
+      const cur  = new Date(from);
+      while (cur <= to) {
+        const d = cur.toISOString().slice(0, 10);
+        if (!m.has(lr.employee.id)) m.set(lr.employee.id, new Set());
+        m.get(lr.employee.id)!.add(d);
+        cur.setDate(cur.getDate() + 1);
+      }
+    });
+    return m;
+  }, [leaveQ.data]);
 
   const days = useMemo(() => Array.from({ length: lastDay }, (_, i) => i + 1), [lastDay]);
   const today = now.toISOString().slice(0, 10);
@@ -221,8 +243,10 @@ function MonthlyReport() {
     const dow = new Date(dateStr).getDay();
     const weekDayName = WEEK_DAYS[dow].toUpperCase();
     if (holidays.has(dateStr)) return 'H';
-    if (weekDayName === weeklyOff.toUpperCase() || weeklyOff.toUpperCase() === weekDayName) return 'W';
-    return punchMap[empId]?.[dateStr] ?? 'A';
+    if (weekDayName === weeklyOff.toUpperCase()) return 'W';
+    if (punchMap[empId]?.[dateStr]) return punchMap[empId][dateStr];
+    if (leaveMap.get(empId)?.has(dateStr)) return 'L';
+    return 'A';
   }
 
   function getDayMeta(day: number) {
@@ -236,14 +260,14 @@ function MonthlyReport() {
   }
 
   function getEmpStats(empId: string) {
-    let present = 0, absent = 0, unverified = 0;
+    let present = 0, absent = 0, leave = 0;
     days.forEach(d => {
       const c = getCell(empId, d);
-      if (c === 'P') present++;
+      if (c === 'P' || c === 'U') present++;
       else if (c === 'A') absent++;
-      else if (c === 'U') unverified++;
+      else if (c === 'L') leave++;
     });
-    return { present, absent, unverified };
+    return { present, absent, leave };
   }
 
   function prevMonth() {
@@ -261,7 +285,7 @@ function MonthlyReport() {
 
   async function exportExcel() {
     const { utils, writeFile } = await import('xlsx');
-    const header = ['Employee', ...days.map(d => String(d)), 'Present', 'Absent', '%'];
+    const header = ['Employee', ...days.map(d => String(d)), 'Present', 'Absent', 'Leave', '%'];
     const rows = employees.map((e: any) => {
       const stats = getEmpStats(e.id);
       const total = stats.present + stats.absent;
@@ -273,6 +297,7 @@ function MonthlyReport() {
         }),
         stats.present,
         stats.absent,
+        stats.leave,
         total > 0 ? `${Math.round((stats.present / total) * 100)}%` : '—',
       ];
     });
@@ -284,7 +309,7 @@ function MonthlyReport() {
 
   const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-  const isLoading = empQ.isLoading || punchQ.isLoading;
+  const isLoading = empQ.isLoading || punchQ.isLoading || leaveQ.isLoading;
 
   return (
     <div className="space-y-5">
@@ -344,6 +369,7 @@ function MonthlyReport() {
                   })}
                   <th className="px-3 py-3 text-center font-semibold text-slate-300 whitespace-nowrap">Present</th>
                   <th className="px-3 py-3 text-center font-semibold text-slate-300 whitespace-nowrap">Absent</th>
+                  <th className="px-3 py-3 text-center font-semibold text-slate-300 whitespace-nowrap">Leave</th>
                   <th className="px-3 py-3 text-center font-semibold text-slate-300 whitespace-nowrap">%</th>
                 </tr>
               </thead>
@@ -374,6 +400,7 @@ function MonthlyReport() {
                       })}
                       <td className="px-3 py-2.5 text-center font-bold text-emerald-700">{stats.present}</td>
                       <td className="px-3 py-2.5 text-center font-bold text-red-500">{stats.absent}</td>
+                      <td className="px-3 py-2.5 text-center font-bold text-sky-600">{stats.leave || '—'}</td>
                       <td className="px-3 py-2.5 text-center font-bold" style={{ color: pct !== null ? (pct >= 90 ? '#15803d' : pct >= 75 ? '#a16207' : '#b91c1c') : '#94a3b8' }}>
                         {pct !== null ? `${pct}%` : '—'}
                       </td>
@@ -394,6 +421,47 @@ function MonthlyReport() {
 ───────────────────────────────────────────── */
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#be185d','#4338ca'];
 
+function AbsentTable({ employees, dimmed = false }: { employees: any[]; dimmed?: boolean }) {
+  return (
+    <table className={`w-full text-sm ${dimmed ? 'opacity-70' : ''}`}>
+      <thead>
+        <tr className="bg-slate-50 border-b border-slate-200">
+          {['#', 'Employee', 'Phone', 'Site', 'Contact'].map(h => (
+            <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {employees.map((e, i) => {
+          const bg = AVATAR_COLORS[e.name.charCodeAt(0) % AVATAR_COLORS.length];
+          return (
+            <tr key={e.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
+              <td className="px-5 py-4 text-slate-400 font-medium text-xs">{i + 1}</td>
+              <td className="px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0"
+                    style={{ background: bg }}>
+                    {e.name[0]?.toUpperCase()}
+                  </div>
+                  <span className="font-semibold text-slate-900">{e.name}</span>
+                </div>
+              </td>
+              <td className="px-5 py-4 text-slate-600">{e.phone}</td>
+              <td className="px-5 py-4 text-slate-500">{e.defaultSite?.name ?? <span className="text-slate-300 italic text-xs">No site</span>}</td>
+              <td className="px-5 py-4">
+                <a href={`tel:${e.phone}`}
+                  className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors w-fit">
+                  <Phone size={11} />Call
+                </a>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 function AbsentReport() {
   const today = new Date();
   const [date, setDate] = useState(today.toISOString().slice(0, 10));
@@ -410,30 +478,51 @@ function AbsentReport() {
     queryKey: ['report-absent-punches', date],
     queryFn: () => api.get('/admin/punches', { params: { date, punchType: 'IN' } }).then(r => r.data.data),
   });
+  const leaveQ = useQuery({
+    queryKey: ['report-absent-leaves', date.slice(0, 7)],
+    queryFn: () => api.get('/admin/leaves/requests', {
+      params: { status: 'APPROVED', year: date.slice(0, 4), month: String(parseInt(date.slice(5, 7), 10)) }
+    }).then(r => r.data.data ?? r.data),
+  });
 
   const activeEmployees: any[] = empQ.data?.employees?.filter((e: any) => e.status === 'ACTIVE') ?? [];
   const punchedInIds = useMemo(() =>
     new Set((punchQ.data?.punches ?? []).map((p: any) => p.employee.id)),
     [punchQ.data]
   );
-  const absent = useMemo(() =>
-    activeEmployees.filter(e => !punchedInIds.has(e.id)),
-    [activeEmployees, punchedInIds]
-  );
+
+  // Build set of employee IDs on approved leave for the selected date
+  const onLeaveIds: Set<string> = useMemo(() => {
+    const s = new Set<string>();
+    (leaveQ.data ?? []).forEach((lr: any) => {
+      const from = lr.fromDate.slice(0, 10);
+      const to   = lr.toDate.slice(0, 10);
+      if (date >= from && date <= to) s.add(lr.employee.id);
+    });
+    return s;
+  }, [leaveQ.data, date]);
+
+  const absent     = useMemo(() => activeEmployees.filter(e => !punchedInIds.has(e.id)), [activeEmployees, punchedInIds]);
+  const onLeave    = useMemo(() => absent.filter(e => onLeaveIds.has(e.id)),  [absent, onLeaveIds]);
+  const trulyAbsent = useMemo(() => absent.filter(e => !onLeaveIds.has(e.id)), [absent, onLeaveIds]);
 
   const isToday     = date === today.toISOString().slice(0, 10);
   const displayDate = new Date(date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   async function exportExcel() {
     const { utils, writeFile } = await import('xlsx');
-    const rows = absent.map(e => ({ Name: e.name, Phone: e.phone, Site: e.defaultSite?.name ?? '' }));
+    const rows = absent.map(e => ({
+      Name: e.name, Phone: e.phone,
+      Site: e.defaultSite?.name ?? '',
+      Status: onLeaveIds.has(e.id) ? 'On Leave' : 'Absent',
+    }));
     const ws = utils.json_to_sheet(rows);
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, 'Absentees');
     writeFile(wb, `absent-${date}.xlsx`);
   }
 
-  const isLoading = empQ.isLoading || punchQ.isLoading;
+  const isLoading = empQ.isLoading || punchQ.isLoading || leaveQ.isLoading;
 
   return (
     <div className="space-y-5">
@@ -463,11 +552,12 @@ function AbsentReport() {
 
       {/* Summary */}
       {!isLoading && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           {[
-            { label: 'Active Employees', count: activeEmployees.length, bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
-            { label: 'Present',          count: activeEmployees.length - absent.length, bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
-            { label: 'Absent',           count: absent.length, bg: '#fee2e2', text: '#b91c1c', border: '#fecaca' },
+            { label: 'Active',    count: activeEmployees.length,                bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
+            { label: 'Present',   count: activeEmployees.length - absent.length, bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
+            { label: 'On Leave',  count: onLeave.length,                        bg: '#e0f2fe', text: '#0369a1', border: '#bae6fd' },
+            { label: 'Absent',    count: trulyAbsent.length,                    bg: '#fee2e2', text: '#b91c1c', border: '#fecaca' },
           ].map(({ label, count, bg, text, border }) => (
             <div key={label} className="rounded-2xl p-4 text-center" style={{ background: bg, border: `1px solid ${border}` }}>
               <div className="text-3xl font-bold" style={{ color: text }}>{count}</div>
@@ -477,64 +567,42 @@ function AbsentReport() {
         </div>
       )}
 
-      {/* Absent list */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
-        ) : absent.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-slate-400">
-            <FileSpreadsheet size={32} className="opacity-25 mb-2" />
-            <p className="font-medium text-sm">
-              {punchedInIds.size === 0 && activeEmployees.length === 0
-                ? 'No employees found'
-                : '🎉 Everyone present on this day!'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="px-5 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">
-              <UserX size={14} className="text-red-500" />
-              <span className="text-sm font-semibold text-red-700">{absent.length} employee{absent.length !== 1 ? 's' : ''} absent on {displayDate}</span>
+      {/* Absent + On Leave lists */}
+      {isLoading ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
+      ) : absent.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center h-48 text-slate-400">
+          <FileSpreadsheet size={32} className="opacity-25 mb-2" />
+          <p className="font-medium text-sm">
+            {activeEmployees.length === 0 ? 'No employees found' : '🎉 Everyone present on this day!'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Truly Absent */}
+          {trulyAbsent.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="px-5 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">
+                <UserX size={14} className="text-red-500" />
+                <span className="text-sm font-semibold text-red-700">{trulyAbsent.length} absent</span>
+                <span className="text-xs text-red-400 ml-auto">No punch &amp; no approved leave</span>
+              </div>
+              <AbsentTable employees={trulyAbsent} />
             </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  {['#', 'Employee', 'Phone', 'Site', 'Contact'].map(h => (
-                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {absent.map((e, i) => {
-                  const bg = AVATAR_COLORS[e.name.charCodeAt(0) % AVATAR_COLORS.length];
-                  return (
-                    <tr key={e.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-                      <td className="px-5 py-4 text-slate-400 font-medium text-xs">{i + 1}</td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0"
-                            style={{ background: bg }}>
-                            {e.name[0]?.toUpperCase()}
-                          </div>
-                          <span className="font-semibold text-slate-900">{e.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">{e.phone}</td>
-                      <td className="px-5 py-4 text-slate-500">{e.defaultSite?.name ?? <span className="text-slate-300 italic text-xs">No site</span>}</td>
-                      <td className="px-5 py-4">
-                        <a href={`tel:${e.phone}`}
-                          className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors w-fit">
-                          <Phone size={11} />Call
-                        </a>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </>
-        )}
-      </div>
+          )}
+
+          {/* On Leave */}
+          {onLeave.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="px-5 py-3 bg-sky-50 border-b border-sky-100 flex items-center gap-2">
+                <span className="w-5 h-5 rounded flex items-center justify-center text-xs font-bold bg-sky-100 text-sky-700">L</span>
+                <span className="text-sm font-semibold text-sky-700">{onLeave.length} on approved leave</span>
+              </div>
+              <AbsentTable employees={onLeave} dimmed />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
