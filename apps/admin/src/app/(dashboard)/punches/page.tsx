@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
-import { Check, X, CheckCheck, Clock, MapPin, Camera, RefreshCw, AlertCircle } from 'lucide-react';
+import { Check, X, CheckCheck, Clock, MapPin, Camera, RefreshCw, Download, ZoomIn } from 'lucide-react';
 
 type Punch = {
   id: string;
@@ -33,6 +33,100 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+type PhotoModal = { punchId: string; employee: string; time: string; type: 'IN' | 'OUT'; status: string };
+
+function PhotoViewer({ modal, onClose, onApprove, onReject }: {
+  modal: PhotoModal;
+  onClose: () => void;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+}) {
+  const urlQ = useQuery({
+    queryKey: ['photo-url', modal.punchId],
+    queryFn: () => api.get(`/admin/punches/${modal.punchId}/photo-url`).then(r => r.data.data.signedUrl as string),
+    staleTime: 50_000,
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        style={{ maxWidth: 480, width: '100%', maxHeight: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Modal header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-600">
+              {modal.employee[0]?.toUpperCase()}
+            </div>
+            <div>
+              <p className="font-semibold text-slate-900 text-sm">{modal.employee}</p>
+              <p className="text-xs text-slate-400">{modal.time}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${modal.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{modal.type}</span>
+            <button onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Photo */}
+        <div className="flex-1 flex items-center justify-center bg-slate-950 overflow-hidden" style={{ minHeight: 260 }}>
+          {urlQ.isLoading ? (
+            <div className="flex flex-col items-center gap-3 text-slate-400">
+              <div className="w-8 h-8 border-2 border-slate-600 border-t-blue-400 rounded-full animate-spin" />
+              <p className="text-xs">Loading photo…</p>
+            </div>
+          ) : urlQ.isError ? (
+            <div className="text-slate-400 text-sm text-center px-6">
+              <Camera size={32} className="opacity-30 mx-auto mb-2" />
+              <p>Could not load photo</p>
+            </div>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={urlQ.data}
+              alt="Punch photo"
+              className="w-full h-full object-contain"
+              style={{ maxHeight: 400 }}
+            />
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="px-5 py-4 border-t border-slate-100 flex items-center gap-3">
+          {modal.status === 'PENDING' && (
+            <>
+              <button onClick={() => { onApprove(modal.punchId); onClose(); }}
+                className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
+                <Check size={15} />Approve
+              </button>
+              <button onClick={() => { onReject(modal.punchId); onClose(); }}
+                className="flex-1 flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
+                <X size={15} />Reject
+              </button>
+            </>
+          )}
+          {urlQ.data && (
+            <a href={urlQ.data} download target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-4 py-2.5 rounded-xl transition-colors">
+              <Download size={14} />Save
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TypeBadge({ type }: { type: 'IN' | 'OUT' }) {
   return (
     <span className={`inline-block text-xs font-bold px-2.5 py-1 rounded-full ${type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -43,8 +137,9 @@ function TypeBadge({ type }: { type: 'IN' | 'OUT' }) {
 
 export default function PunchesPage() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<'pending' | 'all'>('pending');
-  const [cursor, setCursor] = useState<string | undefined>();
+  const [tab, setTab]             = useState<'pending' | 'all'>('pending');
+  const [cursor, setCursor]       = useState<string | undefined>();
+  const [photoModal, setPhotoModal] = useState<PhotoModal | null>(null);
 
   const pendingQ = useQuery({
     queryKey: ['punches', 'pending'],
@@ -66,10 +161,9 @@ export default function PunchesPage() {
   const reject     = useMutation({ mutationFn: (id: string) => api.post(`/admin/punches/${id}/reject`),         onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }) });
   const approveAll = useMutation({ mutationFn: () => api.post('/admin/punches/approve-all-normal'),             onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }) });
 
-  const viewPhoto = async (id: string) => {
-    const res = await api.get(`/admin/punches/${id}/photo-url`);
-    window.open(res.data.data.signedUrl, '_blank');
-  };
+  function openPhoto(p: Punch) {
+    setPhotoModal({ punchId: p.id, employee: p.employee.name, time: formatDateTime(p.timestampServer), type: p.type, status: p.approvalStatus });
+  }
 
   const punches: Punch[] = tab === 'pending' ? (pendingQ.data?.punches ?? []) : (allQ.data?.punches ?? []);
   const loading          = tab === 'pending' ? pendingQ.isLoading : allQ.isLoading;
@@ -77,6 +171,14 @@ export default function PunchesPage() {
 
   return (
     <div className="min-h-full bg-slate-50">
+      {photoModal && (
+        <PhotoViewer
+          modal={photoModal}
+          onClose={() => setPhotoModal(null)}
+          onApprove={id => approve.mutate(id)}
+          onReject={id => reject.mutate(id)}
+        />
+      )}
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-8 py-5">
         <div className="flex items-center justify-between">
@@ -181,9 +283,9 @@ export default function PunchesPage() {
                       </td>
                       <td className="px-5 py-4">
                         {p.photoKey ? (
-                          <button onClick={() => viewPhoto(p.id)}
+                          <button onClick={() => openPhoto(p)}
                             className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors">
-                            <Camera size={12} />View
+                            <ZoomIn size={12} />View
                           </button>
                         ) : <span className="text-slate-300 text-xs">—</span>}
                       </td>
