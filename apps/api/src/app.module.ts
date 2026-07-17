@@ -8,6 +8,7 @@ import { PunchesModule } from './modules/punches/punches.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { SitesModule } from './modules/sites/sites.module';
 import { HolidaysModule } from './modules/holidays/holidays.module';
+import { LeavesModule } from './modules/leaves/leaves.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { HolidaysModule } from './modules/holidays/holidays.module';
     EmployeesModule,
     SitesModule,
     HolidaysModule,
+    LeavesModule,
   ],
 })
 export class AppModule {}

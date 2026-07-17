@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, ClipboardList, Users, MapPin,
-  CalendarDays, Settings, BarChart2, LogOut, Building2,
+  CalendarDays, Settings, BarChart2, LogOut, Building2, Umbrella,
 } from 'lucide-react';
 
 const nav = [
@@ -13,6 +13,7 @@ const nav = [
   { href: '/employees', label: 'Employees',  icon: Users },
   { href: '/sites',     label: 'Sites',      icon: MapPin },
   { href: '/holidays',  label: 'Holidays',   icon: CalendarDays },
+  { href: '/leaves',    label: 'Leaves',     icon: Umbrella },
   { href: '/reports',   label: 'Reports',    icon: BarChart2 },
   { href: '/settings',  label: 'Settings',   icon: Settings },
 ];
