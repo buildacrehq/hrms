@@ -2,107 +2,191 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { UserPlus, Search, KeyRound, X, Users } from 'lucide-react';
+import { UserPlus, Search, KeyRound, X, Users, Pencil, UserCheck, UserX } from 'lucide-react';
 
-type Employee = { id: string; name: string; phone: string; gender: string; status: string; defaultSite: { name: string } | null };
+type Employee = {
+  id: string; name: string; phone: string; gender: string;
+  status: string; defaultSite: { id: string; name: string } | null;
+};
 type Site = { id: string; name: string };
 
-function Avatar({ name, size = 9 }: { name: string; size?: number }) {
-  const colors = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2'];
-  const bg = colors[name.charCodeAt(0) % colors.length];
+const AVATAR_COLORS = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#be185d','#4338ca'];
+
+function Avatar({ name, size = 36 }: { name: string; size?: number }) {
+  const bg = AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
   return (
-    <div className={`w-${size} h-${size} rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0`}
-      style={{ background: bg, width: size * 4, height: size * 4 }}>
+    <div className="rounded-xl flex items-center justify-center text-white font-bold shrink-0"
+      style={{ background: bg, width: size, height: size, fontSize: size * 0.38 }}>
       {name[0]?.toUpperCase()}
     </div>
   );
 }
 
+/* ─── Set Password Modal ─── */
 function SetPasswordModal({ employee, onClose }: { employee: Employee; onClose: () => void }) {
   const [password, setPassword] = useState('');
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
-
   const mut = useMutation({
     mutationFn: () => api.post(`/admin/employees/${employee.id}/set-password`, { password }),
     onSuccess: () => setDone(true),
-    onError: (e: any) => setError(e?.response?.data?.message ?? 'Error setting password'),
+    onError: (e: any) => setError(e?.response?.data?.message ?? 'Error'),
+  });
+  return (
+    <Modal onClose={onClose}>
+      <ModalHeader title="Set Password" sub={`${employee.name} · ${employee.phone}`} onClose={onClose}>
+        <Avatar name={employee.name} />
+      </ModalHeader>
+      {done ? (
+        <div className="text-center py-6 px-6">
+          <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3 text-2xl">✓</div>
+          <p className="font-semibold text-slate-900">Password set!</p>
+          <p className="text-sm text-slate-500 mt-1">Share it with {employee.name} securely.</p>
+          <button onClick={onClose} className="mt-5 w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">Done</button>
+        </div>
+      ) : (
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">New Password <span className="font-normal text-slate-400">(min 6 chars)</span></label>
+            <input type="text" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="e.g. Ravi@2026" autoFocus
+              className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          </div>
+          {error && <p className="text-red-500 text-xs bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+          <div className="flex gap-3">
+            <button onClick={() => mut.mutate()} disabled={password.length < 6 || mut.isPending}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
+              {mut.isPending ? 'Saving…' : 'Set Password'}
+            </button>
+            <button onClick={onClose} className="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors">Cancel</button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/* ─── Edit Employee Modal ─── */
+function EditModal({ employee, sites, onClose }: { employee: Employee; sites: Site[]; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    name: employee.name,
+    phone: employee.phone,
+    gender: employee.gender,
+    defaultSiteId: employee.defaultSite?.id ?? '',
+  });
+  const [error, setError] = useState('');
+
+  const mut = useMutation({
+    mutationFn: () => api.patch(`/admin/employees/${employee.id}`, {
+      name: form.name,
+      phone: form.phone,
+      gender: form.gender,
+      defaultSiteId: form.defaultSiteId || undefined,
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); onClose(); },
+    onError: (e: any) => setError(e?.response?.data?.message ?? 'Error updating employee'),
   });
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <Avatar name={employee.name} size={9} />
-            <div>
-              <h3 className="font-bold text-slate-900">Set Password</h3>
-              <p className="text-xs text-slate-400">{employee.phone}</p>
-            </div>
+    <Modal onClose={onClose}>
+      <ModalHeader title="Edit Employee" sub="Update details below" onClose={onClose}>
+        <Avatar name={employee.name} />
+      </ModalHeader>
+      <div className="p-6 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2">
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Full Name</label>
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} autoFocus
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">
-            <X size={18} />
-          </button>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Phone</label>
+            <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} type="tel"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Gender</label>
+            <select value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="MALE">Male</option>
+              <option value="FEMALE">Female</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Site</label>
+            <select value={form.defaultSiteId} onChange={e => setForm(f => ({ ...f, defaultSiteId: e.target.value }))}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">No site assigned</option>
+              {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
         </div>
+        {error && <p className="text-red-500 text-xs bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+        <div className="flex gap-3 pt-1">
+          <button onClick={() => mut.mutate()} disabled={mut.isPending || !form.name || !form.phone}
+            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
+            {mut.isPending ? 'Saving…' : 'Save Changes'}
+          </button>
+          <button onClick={onClose} className="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors">Cancel</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
-        {done ? (
-          <div className="text-center py-6">
-            <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
-              <span className="text-2xl">✓</span>
-            </div>
-            <p className="font-semibold text-slate-900">Password set!</p>
-            <p className="text-sm text-slate-500 mt-1">Share it with {employee.name} securely.</p>
-            <button onClick={onClose}
-              className="mt-5 w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
-              Done
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">New Password</label>
-              <input
-                type="text"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="e.g. Ravi@2026"
-                autoFocus
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <p className="text-xs text-slate-400 mt-1.5">Minimum 6 characters</p>
-            </div>
-            {error && <p className="text-red-500 text-xs mb-3 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
-            <div className="flex gap-3">
-              <button onClick={() => mut.mutate()} disabled={password.length < 6 || mut.isPending}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
-                {mut.isPending ? 'Saving…' : 'Set Password'}
-              </button>
-              <button onClick={onClose} className="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors">Cancel</button>
-            </div>
-          </>
-        )}
+/* ─── Shared Modal Shell ─── */
+function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        {children}
       </div>
     </div>
   );
 }
 
+function ModalHeader({ title, sub, onClose, children }: { title: string; sub: string; onClose: () => void; children?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+      <div className="flex items-center gap-3">
+        {children}
+        <div>
+          <h3 className="font-bold text-slate-900">{title}</h3>
+          <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
+        </div>
+      </div>
+      <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
+
+/* ─── Page ─── */
 export default function EmployeesPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '' });
   const [passwordTarget, setPasswordTarget] = useState<Employee | null>(null);
+  const [editTarget, setEditTarget] = useState<Employee | null>(null);
 
-  const empQ  = useQuery({ queryKey: ['employees'], queryFn: () => api.get('/admin/employees').then(r => r.data.data) });
-  const siteQ = useQuery({ queryKey: ['sites'],     queryFn: () => api.get('/admin/sites').then(r => r.data.data) });
+  const empQ  = useQuery({
+    queryKey: ['employees', showAll],
+    queryFn: () => api.get('/admin/employees', { params: showAll ? { status: undefined } : {} })
+      .then(r => r.data.data),
+  });
+  const siteQ = useQuery({ queryKey: ['sites'], queryFn: () => api.get('/admin/sites').then(r => r.data.data) });
 
   const create = useMutation({
     mutationFn: () => api.post('/admin/employees', { ...form, password: form.password || undefined }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['employees'] });
-      setShowForm(false);
-      setForm({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '' });
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); setShowForm(false); setForm({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '' }); },
   });
 
   const deactivate = useMutation({
@@ -110,8 +194,14 @@ export default function EmployeesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['employees'] }),
   });
 
+  const activate = useMutation({
+    mutationFn: (id: string) => api.post(`/admin/employees/${id}/activate`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['employees'] }),
+  });
+
   const employees: Employee[] = empQ.data?.employees ?? [];
   const sites: Site[]         = siteQ.data ?? [];
+
   const filtered = employees.filter(e =>
     e.name.toLowerCase().includes(search.toLowerCase()) || e.phone.includes(search)
   );
@@ -120,6 +210,7 @@ export default function EmployeesPage() {
   return (
     <div className="min-h-full bg-slate-50">
       {passwordTarget && <SetPasswordModal employee={passwordTarget} onClose={() => setPasswordTarget(null)} />}
+      {editTarget     && <EditModal employee={editTarget} sites={sites} onClose={() => setEditTarget(null)} />}
 
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-8 py-5">
@@ -141,17 +232,16 @@ export default function EmployeesPage() {
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-bold text-slate-900">New Employee</h3>
-              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">
+              <button onClick={() => setShowForm(false)} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
                 <X size={16} />
               </button>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {([['name', 'Full Name', 'text', 'e.g. Ravi Kumar'], ['phone', 'Phone Number', 'tel', '10-digit mobile']] as const).map(([k, label, type, placeholder]) => (
+              {([['name','Full Name','text','e.g. Ravi Kumar'],['phone','Phone Number','tel','10-digit mobile']] as const).map(([k,label,type,ph]) => (
                 <div key={k}>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">{label}</label>
-                  <input type={type} value={form[k as 'name' | 'phone']}
-                    onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-                    placeholder={placeholder}
+                  <input type={type} value={form[k as 'name'|'phone']} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                    placeholder={ph}
                     className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                 </div>
               ))}
@@ -159,9 +249,7 @@ export default function EmployeesPage() {
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5">Gender</label>
                 <select value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="MALE">Male</option>
-                  <option value="FEMALE">Female</option>
-                  <option value="OTHER">Other</option>
+                  <option value="MALE">Male</option><option value="FEMALE">Female</option><option value="OTHER">Other</option>
                 </select>
               </div>
               <div>
@@ -173,7 +261,7 @@ export default function EmployeesPage() {
                 </select>
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Initial Password <span className="font-normal text-slate-400">(optional — can set later)</span></label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Initial Password <span className="font-normal text-slate-400">(optional)</span></label>
                 <input type="text" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                   placeholder="Leave blank to set later"
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -181,7 +269,7 @@ export default function EmployeesPage() {
             </div>
             {create.isError && (
               <p className="text-red-500 text-xs mt-3 bg-red-50 px-3 py-2 rounded-lg">
-                {String((create.error as any)?.response?.data?.message ?? 'Error creating employee')}
+                {String((create.error as any)?.response?.data?.message ?? 'Error')}
               </p>
             )}
             <div className="flex gap-3 mt-5">
@@ -194,25 +282,35 @@ export default function EmployeesPage() {
           </div>
         )}
 
-        {/* Search */}
-        <div className="relative w-72">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search name or phone…"
-            className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+        {/* Toolbar */}
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-72">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or phone…"
+              className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          </div>
+          <button
+            onClick={() => setShowAll(v => !v)}
+            className="flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-xl border transition-colors"
+            style={{
+              background: showAll ? '#f1f5f9' : '#fff',
+              borderColor: showAll ? '#cbd5e1' : '#e2e8f0',
+              color: showAll ? '#334155' : '#64748b',
+            }}
+          >
+            <Users size={14} />
+            {showAll ? 'Showing all' : 'Active only'}
+          </button>
         </div>
 
         {/* Table */}
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
           {empQ.isLoading ? (
-            <div className="flex flex-col items-center justify-center h-56 text-slate-400">
-              <p className="text-sm">Loading…</p>
-            </div>
+            <div className="flex items-center justify-center h-56 text-slate-400 text-sm">Loading…</div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-56 text-slate-400">
               <Users size={36} className="opacity-25 mb-3" />
-              <p className="font-medium">{search ? 'No results found' : 'No employees yet'}</p>
-              {!search && <p className="text-xs mt-1">Add your first employee above</p>}
+              <p className="font-medium text-sm">{search ? 'No results found' : 'No employees yet'}</p>
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -228,7 +326,7 @@ export default function EmployeesPage() {
                   <tr key={e.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <Avatar name={e.name} size={9} />
+                        <Avatar name={e.name} size={34} />
                         <span className="font-semibold text-slate-900">{e.name}</span>
                       </div>
                     </td>
@@ -242,19 +340,28 @@ export default function EmployeesPage() {
                     <td className="px-5 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${e.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${e.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                        {e.status}
+                        {e.status === 'ACTIVE' ? 'Active' : 'Deactivated'}
                       </span>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
+                        <button onClick={() => setEditTarget(e)}
+                          className="flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
+                          <Pencil size={11} />Edit
+                        </button>
                         <button onClick={() => setPasswordTarget(e)}
                           className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
-                          <KeyRound size={12} />Password
+                          <KeyRound size={11} />Password
                         </button>
-                        {e.status === 'ACTIVE' && (
+                        {e.status === 'ACTIVE' ? (
                           <button onClick={() => { if (confirm(`Deactivate ${e.name}?`)) deactivate.mutate(e.id); }}
-                            className="text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">
-                            Deactivate
+                            className="flex items-center gap-1.5 text-xs font-medium text-red-500 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">
+                            <UserX size={11} />Deactivate
+                          </button>
+                        ) : (
+                          <button onClick={() => { if (confirm(`Re-activate ${e.name}?`)) activate.mutate(e.id); }}
+                            className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors">
+                            <UserCheck size={11} />Activate
                           </button>
                         )}
                       </div>

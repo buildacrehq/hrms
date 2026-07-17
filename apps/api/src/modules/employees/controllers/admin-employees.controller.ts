@@ -62,6 +62,14 @@ export class AdminEmployeesController {
     return this.service.deactivate(id);
   }
 
+  @Post(':id/activate')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Re-activate a previously deactivated employee' })
+  activate(@Param('id') id: string) {
+    return this.service.activate(id);
+  }
+
   @Post(':id/set-password')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })

@@ -140,6 +140,7 @@ export default function PunchesPage() {
   const [tab, setTab]             = useState<'pending' | 'all'>('pending');
   const [cursor, setCursor]       = useState<string | undefined>();
   const [photoModal, setPhotoModal] = useState<PhotoModal | null>(null);
+  const [allDate, setAllDate]     = useState('');
 
   const pendingQ = useQuery({
     queryKey: ['punches', 'pending'],
@@ -150,8 +151,8 @@ export default function PunchesPage() {
   });
 
   const allQ = useQuery({
-    queryKey: ['punches', 'all', cursor],
-    queryFn: () => api.get('/admin/punches', { params: { cursor } }).then(r => r.data.data),
+    queryKey: ['punches', 'all', cursor, allDate],
+    queryFn: () => api.get('/admin/punches', { params: { cursor, ...(allDate ? { date: allDate } : {}) } }).then(r => r.data.data),
     enabled: tab === 'all',
     refetchInterval: 5_000,
     refetchIntervalInBackground: false,
@@ -212,22 +213,37 @@ export default function PunchesPage() {
       </div>
 
       <div className="px-8 py-6">
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-slate-100 rounded-xl p-1 w-fit">
-          {(['pending', 'all'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className="px-5 py-2 rounded-lg text-sm font-medium transition-all"
-              style={{
-                background: tab === t ? '#fff' : 'transparent',
-                color: tab === t ? '#0f172a' : '#64748b',
-                boxShadow: tab === t ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
-            >
-              {t === 'pending'
-                ? `Pending${pendingQ.data ? ` (${pendingCount})` : ''}`
-                : 'All Punches'}
-            </button>
-          ))}
+        {/* Tabs + All-tab date filter */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+            {(['pending', 'all'] as const).map(t => (
+              <button key={t} onClick={() => setTab(t)}
+                className="px-5 py-2 rounded-lg text-sm font-medium transition-all"
+                style={{
+                  background: tab === t ? '#fff' : 'transparent',
+                  color: tab === t ? '#0f172a' : '#64748b',
+                  boxShadow: tab === t ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                {t === 'pending'
+                  ? `Pending${pendingQ.data ? ` (${pendingCount})` : ''}`
+                  : 'All Punches'}
+              </button>
+            ))}
+          </div>
+          {tab === 'all' && (
+            <div className="flex items-center gap-2">
+              <input type="date" value={allDate} onChange={e => { setAllDate(e.target.value); setCursor(undefined); }}
+                max={new Date().toISOString().slice(0, 10)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+              {allDate && (
+                <button onClick={() => { setAllDate(''); setCursor(undefined); }}
+                  className="text-xs text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl transition-colors">
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Table */}

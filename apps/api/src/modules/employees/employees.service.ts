@@ -106,6 +106,15 @@ export class EmployeesService {
     });
   }
 
+  async activate(id: string) {
+    await this.assertExists(id);
+    return this.prisma.employee.update({
+      where: { id },
+      data: { status: 'ACTIVE', exitedAt: null },
+      include: WITH_SITE,
+    });
+  }
+
   private async assertExists(id: string): Promise<void> {
     const emp = await this.prisma.employee.findUnique({ where: { id }, select: { id: true } });
     if (!emp) throw new NotFoundException(`Employee ${id} not found`);
