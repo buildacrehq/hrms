@@ -2,9 +2,10 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { ClipboardList, Users, MapPin, CalendarDays, Settings, BarChart2, LogOut } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Users, MapPin, CalendarDays, Settings, BarChart2, LogOut } from 'lucide-react';
 
 const nav = [
+  { href: '/dashboard', label: 'Dashboard',  icon: LayoutDashboard },
   { href: '/punches',   label: 'Approvals',  icon: ClipboardList },
   { href: '/employees', label: 'Employees',  icon: Users },
   { href: '/sites',     label: 'Sites',      icon: MapPin },
