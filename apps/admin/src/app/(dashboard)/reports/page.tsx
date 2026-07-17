@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDate, formatTime } from '@/lib/utils';
-import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, BarChart2 } from 'lucide-react';
+import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, BarChart2, UserX, Phone } from 'lucide-react';
 
 /* ─────────────────────────────────────────────
    DAILY REPORT
@@ -390,10 +390,160 @@ function MonthlyReport() {
 }
 
 /* ─────────────────────────────────────────────
+   ABSENT REPORT
+───────────────────────────────────────────── */
+const AVATAR_COLORS = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#be185d','#4338ca'];
+
+function AbsentReport() {
+  const today = new Date();
+  const [date, setDate] = useState(today.toISOString().slice(0, 10));
+
+  function shiftDate(days: number) {
+    const d = new Date(date); d.setDate(d.getDate() + days); setDate(d.toISOString().slice(0, 10));
+  }
+
+  const empQ = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => api.get('/admin/employees').then(r => r.data.data),
+  });
+  const punchQ = useQuery({
+    queryKey: ['report-absent-punches', date],
+    queryFn: () => api.get('/admin/punches', { params: { date, punchType: 'IN' } }).then(r => r.data.data),
+  });
+
+  const activeEmployees: any[] = empQ.data?.employees?.filter((e: any) => e.status === 'ACTIVE') ?? [];
+  const punchedInIds = useMemo(() =>
+    new Set((punchQ.data?.punches ?? []).map((p: any) => p.employee.id)),
+    [punchQ.data]
+  );
+  const absent = useMemo(() =>
+    activeEmployees.filter(e => !punchedInIds.has(e.id)),
+    [activeEmployees, punchedInIds]
+  );
+
+  const isToday     = date === today.toISOString().slice(0, 10);
+  const displayDate = new Date(date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  async function exportExcel() {
+    const { utils, writeFile } = await import('xlsx');
+    const rows = absent.map(e => ({ Name: e.name, Phone: e.phone, Site: e.defaultSite?.name ?? '' }));
+    const ws = utils.json_to_sheet(rows);
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, 'Absentees');
+    writeFile(wb, `absent-${date}.xlsx`);
+  }
+
+  const isLoading = empQ.isLoading || punchQ.isLoading;
+
+  return (
+    <div className="space-y-5">
+      {/* Date nav */}
+      <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 flex items-center gap-4 shadow-sm">
+        <button onClick={() => shiftDate(-1)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors">
+          <ChevronLeft size={16} />
+        </button>
+        <div className="flex-1 text-center">
+          <p className="font-semibold text-slate-900">{displayDate}</p>
+          {isToday && <span className="text-xs text-blue-600 font-medium">Today</span>}
+        </div>
+        <button onClick={() => shiftDate(1)} disabled={isToday}
+          className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors disabled:opacity-30">
+          <ChevronRight size={16} />
+        </button>
+        <div className="w-px h-6 bg-slate-200" />
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          max={today.toISOString().slice(0, 10)}
+          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <button onClick={exportExcel} disabled={absent.length === 0}
+          className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40 transition-colors"
+          style={{ background: '#16a34a', color: '#fff' }}>
+          <Download size={14} />Export
+        </button>
+      </div>
+
+      {/* Summary */}
+      {!isLoading && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'Active Employees', count: activeEmployees.length, bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
+            { label: 'Present',          count: activeEmployees.length - absent.length, bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
+            { label: 'Absent',           count: absent.length, bg: '#fee2e2', text: '#b91c1c', border: '#fecaca' },
+          ].map(({ label, count, bg, text, border }) => (
+            <div key={label} className="rounded-2xl p-4 text-center" style={{ background: bg, border: `1px solid ${border}` }}>
+              <div className="text-3xl font-bold" style={{ color: text }}>{count}</div>
+              <div className="text-xs font-semibold mt-1" style={{ color: text, opacity: 0.75 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Absent list */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
+        ) : absent.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-48 text-slate-400">
+            <FileSpreadsheet size={32} className="opacity-25 mb-2" />
+            <p className="font-medium text-sm">
+              {punchedInIds.size === 0 && activeEmployees.length === 0
+                ? 'No employees found'
+                : '🎉 Everyone present on this day!'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="px-5 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">
+              <UserX size={14} className="text-red-500" />
+              <span className="text-sm font-semibold text-red-700">{absent.length} employee{absent.length !== 1 ? 's' : ''} absent on {displayDate}</span>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  {['#', 'Employee', 'Phone', 'Site', 'Contact'].map(h => (
+                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {absent.map((e, i) => {
+                  const bg = AVATAR_COLORS[e.name.charCodeAt(0) % AVATAR_COLORS.length];
+                  return (
+                    <tr key={e.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
+                      <td className="px-5 py-4 text-slate-400 font-medium text-xs">{i + 1}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0"
+                            style={{ background: bg }}>
+                            {e.name[0]?.toUpperCase()}
+                          </div>
+                          <span className="font-semibold text-slate-900">{e.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-slate-600">{e.phone}</td>
+                      <td className="px-5 py-4 text-slate-500">{e.defaultSite?.name ?? <span className="text-slate-300 italic text-xs">No site</span>}</td>
+                      <td className="px-5 py-4">
+                        <a href={`tel:${e.phone}`}
+                          className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors w-fit">
+                          <Phone size={11} />Call
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
    PAGE
 ───────────────────────────────────────────── */
 export default function ReportsPage() {
-  const [tab, setTab] = useState<'daily' | 'monthly'>('daily');
+  const [tab, setTab] = useState<'daily' | 'monthly' | 'absent'>('daily');
 
   return (
     <div className="min-h-full bg-slate-50">
@@ -409,8 +559,9 @@ export default function ReportsPage() {
           {([
             { id: 'daily',   label: 'Daily',   icon: CalendarDays },
             { id: 'monthly', label: 'Monthly', icon: BarChart2 },
+            { id: 'absent',  label: 'Absent',  icon: UserX },
           ] as const).map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => setTab(id)}
+            <button key={id} onClick={() => setTab(id as any)}
               className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all"
               style={{
                 background: tab === id ? '#fff' : 'transparent',
@@ -424,6 +575,7 @@ export default function ReportsPage() {
 
         {tab === 'daily'   && <DailyReport />}
         {tab === 'monthly' && <MonthlyReport />}
+        {tab === 'absent'  && <AbsentReport />}
       </div>
     </div>
   );
