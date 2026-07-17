@@ -1,8 +1,9 @@
 'use client';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { UserPlus, Search, KeyRound, X, Users, Pencil, UserCheck, UserX } from 'lucide-react';
+import { UserPlus, Search, KeyRound, X, Users, Pencil, UserCheck, UserX, Clock, ChevronRight, LogIn, LogOut as LogOutIcon, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import { formatDate, formatTime } from '@/lib/utils';
 
 type Employee = {
   id: string; name: string; phone: string; gender: string;
@@ -11,6 +12,154 @@ type Employee = {
 type Site = { id: string; name: string };
 
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#be185d','#4338ca'];
+
+/* ─── Punch History Drawer ─── */
+function HistoryDrawer({ employee, onClose }: { employee: Employee; onClose: () => void }) {
+  const punchQ = useQuery({
+    queryKey: ['emp-punches', employee.id],
+    queryFn: () => api.get('/admin/punches', { params: { employeeId: employee.id } }).then(r => r.data.data),
+  });
+
+  const punches: any[] = punchQ.data?.punches ?? [];
+
+  // Group punches by date, sort descending
+  const grouped = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    punches.forEach(p => {
+      const day = new Date(p.timestampServer).toISOString().slice(0, 10);
+      if (!map[day]) map[day] = [];
+      map[day].push(p);
+    });
+    return Object.entries(map)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([date, rows]) => {
+        const sorted = rows.sort((a, b) => new Date(a.timestampServer).getTime() - new Date(b.timestampServer).getTime());
+        const inPunch  = sorted.find(p => p.type === 'IN');
+        const outPunch = sorted.find(p => p.type === 'OUT');
+        let hoursWorked: string | null = null;
+        if (inPunch && outPunch) {
+          const mins = Math.round((new Date(outPunch.timestampServer).getTime() - new Date(inPunch.timestampServer).getTime()) / 60000);
+          hoursWorked = `${Math.floor(mins / 60)}h ${mins % 60}m`;
+        }
+        return { date, punches: sorted, inPunch, outPunch, hoursWorked };
+      });
+  }, [punches]);
+
+  const totalPresent = grouped.length;
+  const thisMonth    = grouped.filter(g => g.date.slice(0, 7) === new Date().toISOString().slice(0, 7)).length;
+
+  const bg   = AVATAR_COLORS[employee.name.charCodeAt(0) % AVATAR_COLORS.length];
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Drawer */}
+      <div className="fixed right-0 top-0 h-full w-full max-w-md z-50 bg-white shadow-2xl flex flex-col"
+        style={{ animation: 'slideIn 0.22s ease-out' }}>
+        <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+
+        {/* Drawer header */}
+        <div className="px-6 py-5 border-b border-slate-100">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-lg font-bold shrink-0"
+                style={{ background: bg }}>
+                {employee.name[0]?.toUpperCase()}
+              </div>
+              <div>
+                <h2 className="font-bold text-slate-900 text-base">{employee.name}</h2>
+                <p className="text-sm text-slate-400">{employee.phone}</p>
+                {employee.defaultSite && <p className="text-xs text-slate-400 mt-0.5">{employee.defaultSite.name}</p>}
+              </div>
+            </div>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors mt-0.5">
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Mini stats */}
+          <div className="flex gap-3 mt-4">
+            {[
+              { label: 'Total Days', value: totalPresent, color: '#2563eb', bg: '#eff6ff' },
+              { label: 'This Month', value: thisMonth,    color: '#059669', bg: '#f0fdf4' },
+              { label: 'Total Punches', value: punches.length, color: '#7c3aed', bg: '#f5f3ff' },
+            ].map(({ label, value, color, bg: cardBg }) => (
+              <div key={label} className="flex-1 rounded-xl px-3 py-2.5 text-center" style={{ background: cardBg }}>
+                <div className="text-xl font-bold" style={{ color }}>{value}</div>
+                <div className="text-xs mt-0.5" style={{ color, opacity: 0.7 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Punch list */}
+        <div className="flex-1 overflow-y-auto">
+          {punchQ.isLoading ? (
+            <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Loading history…</div>
+          ) : grouped.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-slate-400">
+              <Clock size={32} className="opacity-25 mb-2" />
+              <p className="text-sm">No punches recorded yet</p>
+            </div>
+          ) : grouped.map(({ date, punches: dayPunches, inPunch, outPunch, hoursWorked }) => {
+            const d = new Date(date);
+            const dayLabel   = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+            const isToday    = date === new Date().toISOString().slice(0, 10);
+            const isYesterday = date === new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+            const label = isToday ? 'Today' : isYesterday ? 'Yesterday' : dayLabel;
+
+            return (
+              <div key={date} className="border-b border-slate-100 last:border-0">
+                {/* Date header */}
+                <div className="flex items-center justify-between px-6 py-3 bg-slate-50">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-700">{label}</span>
+                    {isToday && <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">Today</span>}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {inPunch && outPunch && (
+                      <span className="text-xs font-semibold text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-full">
+                        ⏱ {hoursWorked}
+                      </span>
+                    )}
+                    {inPunch && !outPunch && (
+                      <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full font-medium">No OUT</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Punch rows */}
+                {dayPunches.map(p => (
+                  <div key={p.id} className="flex items-center gap-4 px-6 py-3 hover:bg-slate-50 transition-colors">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${p.type === 'IN' ? 'bg-emerald-100' : 'bg-amber-100'}`}>
+                      {p.type === 'IN'
+                        ? <LogIn size={14} className="text-emerald-600" />
+                        : <LogOutIcon size={14} className="text-amber-600" />}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-bold ${p.type === 'IN' ? 'text-emerald-700' : 'text-amber-700'}`}>{p.type}</span>
+                        <span className="text-sm font-semibold text-slate-800">{formatTime(p.timestampServer)}</span>
+                      </div>
+                      {p.site && <p className="text-xs text-slate-400 mt-0.5">{p.site.name}</p>}
+                    </div>
+                    <div>
+                      {p.approvalStatus === 'APPROVED' && <CheckCircle2 size={15} className="text-emerald-500" />}
+                      {p.approvalStatus === 'PENDING'  && <AlertCircle  size={15} className="text-amber-400" />}
+                      {p.approvalStatus === 'REJECTED' && <XCircle      size={15} className="text-red-400" />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
 
 function Avatar({ name, size = 36 }: { name: string; size?: number }) {
   const bg = AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
@@ -175,7 +324,8 @@ export default function EmployeesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '' });
   const [passwordTarget, setPasswordTarget] = useState<Employee | null>(null);
-  const [editTarget, setEditTarget] = useState<Employee | null>(null);
+  const [editTarget,     setEditTarget]     = useState<Employee | null>(null);
+  const [historyTarget,  setHistoryTarget]  = useState<Employee | null>(null);
 
   const empQ  = useQuery({
     queryKey: ['employees', showAll],
@@ -211,6 +361,7 @@ export default function EmployeesPage() {
     <div className="min-h-full bg-slate-50">
       {passwordTarget && <SetPasswordModal employee={passwordTarget} onClose={() => setPasswordTarget(null)} />}
       {editTarget     && <EditModal employee={editTarget} sites={sites} onClose={() => setEditTarget(null)} />}
+      {historyTarget  && <HistoryDrawer employee={historyTarget} onClose={() => setHistoryTarget(null)} />}
 
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-8 py-5">
@@ -325,10 +476,15 @@ export default function EmployeesPage() {
                 {filtered.map(e => (
                   <tr key={e.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
                     <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
+                      <button onClick={() => setHistoryTarget(e)} className="flex items-center gap-3 group text-left w-full">
                         <Avatar name={e.name} size={34} />
-                        <span className="font-semibold text-slate-900">{e.name}</span>
-                      </div>
+                        <div>
+                          <span className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">{e.name}</span>
+                          <div className="flex items-center gap-1 text-xs text-slate-400 group-hover:text-blue-400 transition-colors mt-0.5">
+                            <Clock size={10} /><span>View history</span>
+                          </div>
+                        </div>
+                      </button>
                     </td>
                     <td className="px-5 py-4 text-slate-600">{e.phone}</td>
                     <td className="px-5 py-4 text-slate-500 capitalize">{e.gender.toLowerCase()}</td>
@@ -344,7 +500,11 @@ export default function EmployeesPage() {
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button onClick={() => setHistoryTarget(e)}
+                          className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
+                          <Clock size={11} />History
+                        </button>
                         <button onClick={() => setEditTarget(e)}
                           className="flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
                           <Pencil size={11} />Edit

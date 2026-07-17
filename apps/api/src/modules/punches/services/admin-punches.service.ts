@@ -59,12 +59,13 @@ export class AdminPunchesService {
       where.timestampServer = ts;
     }
 
-    if (query.siteId)    where.siteId         = query.siteId;
-    if (query.status)    where.approvalStatus  = query.status;
-    if (query.punchType) where.type            = query.punchType;
+    if (query.siteId)      where.siteId         = query.siteId;
+    if (query.status)      where.approvalStatus  = query.status;
+    if (query.punchType)   where.type            = query.punchType;
+    if (query.employeeId)  where.employeeId      = query.employeeId;
 
-    // Range queries (monthly reports) skip pagination and return all matching rows.
-    const limit = isRangeQuery ? 5000 : PAGE_SIZE;
+    // Range queries and employee-history queries skip pagination and return all matching rows.
+    const limit = (isRangeQuery || query.employeeId) ? 5000 : PAGE_SIZE;
 
     const punches = await this.prisma.punch.findMany({
       where,

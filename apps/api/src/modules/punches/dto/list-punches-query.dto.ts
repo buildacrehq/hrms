@@ -33,6 +33,11 @@ export class ListPunchesQueryDto {
   @IsEnum(PunchType)
   punchType?: PunchType;
 
+  @ApiPropertyOptional({ description: 'Filter by employee ID' })
+  @IsOptional()
+  @IsString()
+  employeeId?: string;
+
   @ApiPropertyOptional({ description: 'Last punch ID from previous page' })
   @IsOptional()
   @IsString()
