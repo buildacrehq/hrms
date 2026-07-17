@@ -38,6 +38,7 @@ export class AdminPunchesService {
 
   async getAll(query: ListPunchesQueryDto) {
     const where: Prisma.PunchWhereInput = {};
+    const isRangeQuery = !!(query.startDate || query.endDate);
 
     if (query.date) {
       const d = new Date(query.date);
@@ -45,15 +46,31 @@ export class AdminPunchesService {
         gte: new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0),
         lte: new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999),
       };
+    } else if (isRangeQuery) {
+      const ts: Prisma.DateTimeFilter = {};
+      if (query.startDate) {
+        const d = new Date(query.startDate);
+        ts.gte = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+      }
+      if (query.endDate) {
+        const d = new Date(query.endDate);
+        ts.lte = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      }
+      where.timestampServer = ts;
     }
-    if (query.siteId) where.siteId = query.siteId;
-    if (query.status) where.approvalStatus = query.status;
+
+    if (query.siteId)    where.siteId         = query.siteId;
+    if (query.status)    where.approvalStatus  = query.status;
+    if (query.punchType) where.type            = query.punchType;
+
+    // Range queries (monthly reports) skip pagination and return all matching rows.
+    const limit = isRangeQuery ? 5000 : PAGE_SIZE;
 
     const punches = await this.prisma.punch.findMany({
       where,
       orderBy: { timestampServer: 'desc' },
-      take: PAGE_SIZE,
-      ...(query.cursor ? { skip: 1, cursor: { id: query.cursor } } : {}),
+      take: limit,
+      ...(!isRangeQuery && query.cursor ? { skip: 1, cursor: { id: query.cursor } } : {}),
       include: {
         employee: { select: { id: true, name: true, phone: true } },
         site: { select: { name: true } },
@@ -62,7 +79,7 @@ export class AdminPunchesService {
 
     return {
       punches,
-      nextCursor: punches.length === PAGE_SIZE ? punches[punches.length - 1].id : null,
+      nextCursor: !isRangeQuery && punches.length === PAGE_SIZE ? punches[punches.length - 1].id : null,
     };
   }
 
