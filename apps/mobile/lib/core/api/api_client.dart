@@ -6,7 +6,7 @@ import '../storage/token_storage.dart';
 part 'api_client.g.dart';
 
 // 10.0.2.2 = Android emulator → host machine; localhost = macOS desktop / physical device via USB
-const _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:3000/api/v1');
+const _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'https://hrms-nydc.onrender.com/api/v1');
 
 @riverpod
 Dio dio(Ref ref) {
