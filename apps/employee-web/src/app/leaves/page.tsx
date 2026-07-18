@@ -8,6 +8,10 @@ type LeaveType = {
   approvalMode: 'AUTO' | 'MANUAL'; maxConsecutiveDays: number | null;
   accrual: string;
 };
+type LeaveBalance = {
+  id: string; leaveTypeId: string; credited: number; used: number; available: number;
+  leaveType: { id: string; name: string; paid: boolean };
+};
 type LeaveRequest = {
   id: string; fromDate: string; toDate: string; reason: string | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED'; rejectionReason: string | null;
@@ -34,6 +38,7 @@ export default function LeavesPage() {
   const [tab, setTab]               = useState<'list' | 'apply'>('list');
   const [types, setTypes]           = useState<LeaveType[]>([]);
   const [requests, setRequests]     = useState<LeaveRequest[]>([]);
+  const [balances, setBalances]     = useState<LeaveBalance[]>([]);
   const [loading, setLoading]       = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState('');
@@ -52,6 +57,7 @@ export default function LeavesPage() {
     Promise.all([
       api.get('/leaves/types').then(r => setTypes(r.data.data ?? r.data)),
       api.get('/leaves/my-requests').then(r => setRequests(r.data.data ?? r.data)),
+      api.get('/leaves/my-balances').then(r => setBalances(r.data.data ?? r.data)).catch(() => {}),
     ]).catch(() => router.replace('/login'))
       .finally(() => setLoading(false));
   }, [router]);
@@ -140,6 +146,28 @@ export default function LeavesPage() {
       {/* ── LIST TAB ── */}
       {tab === 'list' && (
         <div style={{ padding: '16px' }}>
+          {/* Balance chips */}
+          {balances.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Leave Balance {new Date().getFullYear()}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {balances.map(b => {
+                  const color = b.available === 0 ? '#dc2626' : b.available < 2 ? '#d97706' : '#1d4ed8';
+                  const bg    = b.available === 0 ? '#fef2f2' : b.available < 2 ? '#fffbeb' : '#eff6ff';
+                  const border = b.available === 0 ? '#fecaca' : b.available < 2 ? '#fde68a' : '#bfdbfe';
+                  return (
+                    <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 7, background: bg, border: `1.5px solid ${border}`, borderRadius: 12, padding: '8px 14px' }}>
+                      <div style={{ fontWeight: 800, fontSize: 18, color, lineHeight: 1 }}>{b.available}</div>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#1f2937' }}>{b.leaveType.name}</div>
+                        <div style={{ fontSize: 10, color: '#9ca3af' }}>{b.used} used · {b.credited} credited</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {requests.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>🌴</div>
@@ -202,7 +230,9 @@ export default function LeavesPage() {
                 <p style={{ color: '#9ca3af', fontSize: 13 }}>No leave types configured. Contact HR.</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {types.map(t => (
+                  {types.map(t => {
+                    const bal = balances.find(b => b.leaveTypeId === t.id);
+                    return (
                     <label key={t.id} style={{
                       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
                       borderRadius: 10, border: `1.5px solid ${form.leaveTypeId === t.id ? '#1d4ed8' : '#e5e7eb'}`,
@@ -219,8 +249,20 @@ export default function LeavesPage() {
                           {t.maxConsecutiveDays && ` · Max ${t.maxConsecutiveDays} days`}
                         </div>
                       </div>
+                      {bal !== undefined && (
+                        <div style={{
+                          textAlign: 'center',
+                          background: bal.available === 0 ? '#fef2f2' : '#f0fdf4',
+                          border: `1px solid ${bal.available === 0 ? '#fecaca' : '#bbf7d0'}`,
+                          borderRadius: 8, padding: '4px 8px', minWidth: 36,
+                        }}>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: bal.available === 0 ? '#dc2626' : '#15803d', lineHeight: 1 }}>{bal.available}</div>
+                          <div style={{ fontSize: 9, color: '#9ca3af', fontWeight: 600 }}>left</div>
+                        </div>
+                      )}
                     </label>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

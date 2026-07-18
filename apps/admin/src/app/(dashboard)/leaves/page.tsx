@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Umbrella, Plus, ChevronLeft, ChevronRight, Check, X, Clock,
   Phone, Calendar, Edit2, AlertCircle, RefreshCw, CheckCircle2,
-  XCircle, Users, BadgeCheck, Layers,
+  XCircle, Users, BadgeCheck, Layers, Wallet,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -739,10 +739,202 @@ function TypesTab() {
   );
 }
 
+// ─── Balances Tab ─────────────────────────────────────────────────────────────
+
+interface LeaveBalance {
+  id: string;
+  employeeId: string;
+  leaveTypeId: string;
+  year: number;
+  credited: number;
+  used: number;
+  available: number;
+  employee: { id: string; name: string; phone: string };
+  leaveType: { id: string; name: string; paid: boolean };
+}
+
+function BalancesTab({ leaveTypes }: { leaveTypes: LeaveType[] }) {
+  const qc = useQueryClient();
+  const year = new Date().getFullYear();
+  const [empFilter, setEmpFilter]     = useState('');
+  const [typeFilter, setTypeFilter]   = useState('');
+  const [adjustEmp, setAdjustEmp]     = useState('');
+  const [adjustType, setAdjustType]   = useState('');
+  const [adjustAmt, setAdjustAmt]     = useState('');
+  const [showAdjust, setShowAdjust]   = useState(false);
+  const [adjustBusy, setAdjustBusy]   = useState(false);
+  const [adjustErr, setAdjustErr]     = useState('');
+
+  const empQ = useQuery({
+    queryKey: ['employees-list'],
+    queryFn: () => api.get('/admin/employees').then(r => (r.data.data ?? r.data).employees ?? r.data.data ?? []),
+  });
+  const balQ = useQuery<LeaveBalance[]>({
+    queryKey: ['leave-balances', year],
+    queryFn: () => api.get('/admin/leaves/balances', { params: { year } }).then(r => r.data.data ?? r.data),
+  });
+
+  const employees: any[] = empQ.data ?? [];
+  const balances = (balQ.data ?? []).filter(b => {
+    if (empFilter  && b.employee.name.toLowerCase().indexOf(empFilter.toLowerCase()) === -1) return false;
+    if (typeFilter && b.leaveTypeId !== typeFilter) return false;
+    return true;
+  });
+
+  // Group by employee for summary view
+  const byEmployee = useMemo(() => {
+    const map = new Map<string, { emp: LeaveBalance['employee']; rows: LeaveBalance[] }>();
+    for (const b of balances) {
+      if (!map.has(b.employeeId)) map.set(b.employeeId, { emp: b.employee, rows: [] });
+      map.get(b.employeeId)!.rows.push(b);
+    }
+    return Array.from(map.values()).sort((a, b) => a.emp.name.localeCompare(b.emp.name));
+  }, [balances]);
+
+  async function submitAdjust() {
+    if (!adjustEmp || !adjustType || !adjustAmt) return setAdjustErr('All fields required');
+    const credit = parseFloat(adjustAmt);
+    if (isNaN(credit)) return setAdjustErr('Invalid amount');
+    setAdjustBusy(true); setAdjustErr('');
+    try {
+      await api.post('/admin/leaves/balances/adjust', { employeeId: adjustEmp, leaveTypeId: adjustType, credit });
+      qc.invalidateQueries({ queryKey: ['leave-balances'] });
+      setShowAdjust(false); setAdjustEmp(''); setAdjustType(''); setAdjustAmt('');
+    } catch (e: any) {
+      setAdjustErr(e?.response?.data?.message ?? 'Failed');
+    } finally { setAdjustBusy(false); }
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <input value={empFilter} onChange={e => setEmpFilter(e.target.value)}
+          placeholder="Search employee…"
+          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 w-52" />
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">All leave types</option>
+          {leaveTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <div className="ml-auto">
+          <button onClick={() => setShowAdjust(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm shadow-blue-200">
+            <Plus size={14} /> Adjust Balance
+          </button>
+        </div>
+      </div>
+
+      {balQ.isLoading ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex items-center justify-center h-40 text-slate-400 text-sm">Loading…</div>
+      ) : byEmployee.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center h-40 text-slate-400">
+          <Wallet size={32} className="opacity-20 mb-2" />
+          <p className="text-sm font-medium">No balances yet — accrual runs on the 1st of each month</p>
+          <p className="text-xs mt-1 text-slate-300">You can manually credit balances using "Adjust Balance"</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {byEmployee.map(({ emp, rows }) => (
+            <div key={emp.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+              {/* Employee header */}
+              <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">
+                  {emp.name[0]?.toUpperCase()}
+                </div>
+                <div>
+                  <div className="font-semibold text-slate-900 text-sm">{emp.name}</div>
+                  <div className="text-xs text-slate-400">{emp.phone}</div>
+                </div>
+              </div>
+              {/* Balance rows */}
+              <div className="divide-y divide-slate-50">
+                {rows.map(b => {
+                  const pct = b.credited > 0 ? Math.min(100, (b.used / b.credited) * 100) : 0;
+                  const color = b.available === 0 ? '#dc2626' : b.available < 2 ? '#d97706' : '#16a34a';
+                  return (
+                    <div key={b.id} className="px-5 py-3.5 flex items-center gap-4">
+                      <div className="w-36 shrink-0">
+                        <span className="text-sm font-semibold text-slate-800">{b.leaveType.name}</span>
+                        {b.leaveType.paid && <span className="ml-2 text-[10px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">Paid</span>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-5 text-sm shrink-0">
+                        <div className="text-center">
+                          <div className="font-bold text-slate-700">{b.credited}</div>
+                          <div className="text-[10px] text-slate-400 font-semibold">Credited</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="font-bold text-slate-500">{b.used}</div>
+                          <div className="text-[10px] text-slate-400 font-semibold">Used</div>
+                        </div>
+                        <div className="text-center w-16">
+                          <div className="font-bold text-lg" style={{ color }}>{b.available}</div>
+                          <div className="text-[10px] text-slate-400 font-semibold">Avail.</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Adjust Balance modal */}
+      {showAdjust && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="font-bold text-slate-900 text-lg mb-5">Adjust Leave Balance</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Employee</label>
+                <select value={adjustEmp} onChange={e => setAdjustEmp(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Select employee…</option>
+                  {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Leave Type</label>
+                <select value={adjustType} onChange={e => setAdjustType(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Select leave type…</option>
+                  {leaveTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Days (negative to deduct)</label>
+                <input type="number" step="0.5" value={adjustAmt} onChange={e => setAdjustAmt(e.target.value)}
+                  placeholder="e.g. 1.5 or -1"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              {adjustErr && <p className="text-red-500 text-xs">{adjustErr}</p>}
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => { setShowAdjust(false); setAdjustErr(''); }}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50">Cancel</button>
+              <button onClick={submitAdjust} disabled={adjustBusy}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50">
+                {adjustBusy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function LeavesPage() {
-  const [tab, setTab] = useState<'requests' | 'types'>('requests');
+  const [tab, setTab] = useState<'requests' | 'types' | 'balances'>('requests');
 
   const { data: leaveTypes = [] } = useQuery<LeaveType[]>({
     queryKey: ['leave-types-active'],
@@ -827,13 +1019,18 @@ export default function LeavesPage() {
           <Layers size={14} />
           Leave Types
         </button>
+        <button onClick={() => setTab('balances')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            tab === 'balances' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}>
+          <Wallet size={14} />
+          Balances
+        </button>
       </div>
 
-      {tab === 'requests' ? (
-        <RequestsTab leaveTypes={leaveTypes} />
-      ) : (
-        <TypesTab />
-      )}
+      {tab === 'requests'  && <RequestsTab leaveTypes={leaveTypes} />}
+      {tab === 'types'     && <TypesTab />}
+      {tab === 'balances'  && <BalancesTab leaveTypes={leaveTypes} />}
     </div>
   );
 }

@@ -25,10 +25,11 @@ model Employee {
   passwordHash  String?
   // DPDP Act: timestamp when employee accepted photo/GPS data collection
   consentAt     DateTime?
-  punches       Punch[]
-  leaveRequests LeaveRequest[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  punches        Punch[]
+  leaveRequests  LeaveRequest[]
+  leaveBalances  LeaveBalance[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([defaultSiteId])
   @@index([status])
@@ -110,10 +111,11 @@ model LeaveType {
   approvalMode         ApprovalMode @default(MANUAL)
   maxConsecutiveDays   Int?
   accrual              AccrualType  @default(MONTHLY)
-  isActive             Boolean      @default(true)
+  isActive             Boolean        @default(true)
   requests             LeaveRequest[]
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  balances             LeaveBalance[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 }
 
 model LeaveRequest {
@@ -135,6 +137,26 @@ model LeaveRequest {
   @@index([employeeId])
   @@index([status])
   @@index([fromDate, toDate])
+}
+
+// Per-employee, per-leave-type annual quota ledger.
+// `credited` grows via monthly accrual or manual admin top-up.
+// `used` grows when a leave request is approved, shrinks on cancel.
+model LeaveBalance {
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+  year        Int
+  credited    Float     @default(0)
+  used        Float     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([employeeId])
+  @@index([year])
 }
 
 // ─── Holidays & Calendar ──────────────────────────────────────────────────────

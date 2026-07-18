@@ -37,6 +37,12 @@ export class EmployeeLeavesController {
     return this.service.findTypesForGender(emp?.gender ?? null);
   }
 
+  @Get('my-balances')
+  @ApiOperation({ summary: 'Get own leave balances for current year' })
+  myBalances(@CurrentUser() user: JwtPayload) {
+    return this.service.getBalances(user.sub);
+  }
+
   @Get('my-requests')
   @ApiOperation({ summary: 'Get own leave requests' })
   myRequests(@CurrentUser() user: JwtPayload) {
