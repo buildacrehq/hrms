@@ -249,7 +249,7 @@ export default function HomePage() {
   const isBusy = step === 'detecting' || step === 'gps' || step === 'submitting';
 
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto' }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', paddingBottom: 72 }}>
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1d4ed8, #1e40af)', padding: '48px 20px 22px', color: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -353,6 +353,29 @@ export default function HomePage() {
       <canvas ref={canvasRef} style={{ display: 'none' }} />
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+      {/* Bottom Nav */}
+      <nav style={{
+        position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+        width: '100%', maxWidth: 480, background: '#fff',
+        borderTop: '1px solid #e5e7eb', display: 'flex', zIndex: 50,
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}>
+        {[
+          { key: 'home',   href: '/home',   icon: '🏠', label: 'Attendance' },
+          { key: 'leaves', href: '/leaves', icon: '🌴', label: 'Leaves' },
+        ].map(item => (
+          <a key={item.key} href={item.href} style={{
+            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+            padding: '10px 0 8px', textDecoration: 'none',
+            color: item.key === 'home' ? '#1d4ed8' : '#9ca3af',
+            borderTop: item.key === 'home' ? '2px solid #1d4ed8' : '2px solid transparent',
+          }}>
+            <span style={{ fontSize: 22, lineHeight: 1 }}>{item.icon}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, marginTop: 3 }}>{item.label}</span>
+          </a>
+        ))}
+      </nav>
     </div>
   );
 }

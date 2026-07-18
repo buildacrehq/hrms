@@ -5,6 +5,7 @@ import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { ListLeaveRequestsQueryDto } from './dto/list-leave-requests-query.dto';
+import { CreateEmployeeLeaveRequestDto } from './dto/create-employee-leave-request.dto';
 
 @Injectable()
 export class LeavesService {
@@ -128,6 +129,60 @@ export class LeavesService {
         leaveType: { select: { id: true, name: true } },
       },
     });
+  }
+
+  // ─── Employee self-service ──────────────────────────────────────────────────
+
+  findMyRequests(employeeId: string) {
+    return this.prisma.leaveRequest.findMany({
+      where: { employeeId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        leaveType: { select: { id: true, name: true, paid: true } },
+      },
+    });
+  }
+
+  async submitRequest(dto: CreateEmployeeLeaveRequestDto, employeeId: string) {
+    const from = new Date(dto.fromDate);
+    const to   = new Date(dto.toDate);
+    if (from > to) throw new BadRequestException('fromDate must be before toDate');
+
+    const leaveType = await this.prisma.leaveType.findUnique({ where: { id: dto.leaveTypeId } });
+    if (!leaveType || !leaveType.isActive) throw new NotFoundException('Leave type not found or inactive');
+
+    if (leaveType.maxConsecutiveDays) {
+      const days = Math.round((to.getTime() - from.getTime()) / 86400000) + 1;
+      if (days > leaveType.maxConsecutiveDays) {
+        throw new BadRequestException(`Cannot exceed ${leaveType.maxConsecutiveDays} consecutive days for ${leaveType.name}`);
+      }
+    }
+
+    const status = leaveType.approvalMode === 'AUTO' ? 'APPROVED' : 'PENDING';
+
+    return this.prisma.leaveRequest.create({
+      data: {
+        employeeId,
+        leaveTypeId: dto.leaveTypeId,
+        fromDate: from,
+        toDate: to,
+        reason: dto.reason,
+        status,
+        ...(status === 'APPROVED' ? { approvedAt: new Date() } : {}),
+      },
+      include: {
+        leaveType: { select: { id: true, name: true, paid: true } },
+      },
+    });
+  }
+
+  async cancelRequest(id: string, employeeId: string) {
+    const req = await this.prisma.leaveRequest.findUnique({ where: { id }, select: { id: true, status: true, employeeId: true } });
+    if (!req) throw new NotFoundException('Leave request not found');
+    if (req.employeeId !== employeeId) throw new BadRequestException('Not your leave request');
+    if (req.status !== 'PENDING') throw new BadRequestException('Only pending requests can be cancelled');
+    await this.prisma.leaveRequest.delete({ where: { id } });
+    return { cancelled: true };
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
