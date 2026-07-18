@@ -60,21 +60,11 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   );
 }
 
-// FaceDetector: Chrome Android only. Two attempts to handle warm-up lag.
-// Returns true when a face is found, false when definitively none, null when API unavailable.
-async function detectFace(canvas: HTMLCanvasElement): Promise<boolean | null> {
-  if (!('FaceDetector' in window)) return null; // API not present — skip
-  try {
-    const detector = new (window as any).FaceDetector({ maxDetectedFaces: 1 });
-    let faces = await detector.detect(canvas);
-    if (faces.length > 0) return true;
-    // Give the camera one more chance (sometimes first frame is dark)
-    await new Promise(r => setTimeout(r, 600));
-    faces = await detector.detect(canvas);
-    return faces.length > 0;
-  } catch {
-    return null; // API threw — treat as unavailable
-  }
+// Returns a FaceDetector instance, or null if the API is unavailable.
+function makeFaceDetector(): any | null {
+  if (!('FaceDetector' in window)) return null;
+  try { return new (window as any).FaceDetector({ maxDetectedFaces: 1 }); }
+  catch { return null; }
 }
 
 export default function HomePage() {
@@ -97,6 +87,8 @@ export default function HomePage() {
 
   const [monthStats, setMonthStats] = useState<MonthStats | null>(null);
   const [installReady, setInstallReady] = useState(false);
+  // null = API not available on device, true/false = live detection result
+  const [faceInFrame, setFaceInFrame] = useState<boolean | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -153,6 +145,31 @@ export default function HomePage() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
+  // Live face detection loop — runs every 600ms while camera is active
+  useEffect(() => {
+    if (step !== 'camera') { setFaceInFrame(null); return; }
+    const detector = makeFaceDetector();
+    if (!detector) { setFaceInFrame(null); return; } // API not available — can't enforce
+    let active = true;
+    async function loop() {
+      while (active) {
+        const video = videoRef.current;
+        if (video && video.readyState >= 2) {
+          try {
+            const faces = await detector.detect(video);
+            if (active) setFaceInFrame(faces.length > 0);
+          } catch {
+            if (active) setFaceInFrame(null); // API broke mid-session
+            break;
+          }
+        }
+        await new Promise(r => setTimeout(r, 600));
+      }
+    }
+    loop();
+    return () => { active = false; };
+  }, [step]);
+
   // Clean up camera stream and pending timer on unmount
   useEffect(() => {
     return () => {
@@ -208,22 +225,32 @@ export default function HomePage() {
     ctx.drawImage(video, 0, 0);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
+    // Block immediately if live detection says no face (API available and confirmed absent)
+    if (faceRequired && faceInFrame === false) {
+      setError('No face detected. Look directly at the camera and try again.');
+      capturingRef.current = false;
+      return;
+    }
+
     // Hide camera immediately — frame is on canvas
     setStep('detecting');
-    setStatusMsg('Verifying face…');
+    setStatusMsg('Verifying…');
     stopCamera();
 
-    // ── Face detection ──
-    if (faceRequired) {
-      const result = await detectFace(canvas);
-      if (result === false) {
-        // Definitively no face (API available and returned empty)
-        setError('No face detected. Look directly at the camera and try again.');
-        setStep('idle');
-        capturingRef.current = false;
-        return;
+    // Final face check on the captured frame (catches edge-case where face disappeared between loop tick and shutter)
+    if (faceRequired && faceInFrame !== null) {
+      const detector = makeFaceDetector();
+      if (detector) {
+        try {
+          const faces = await detector.detect(canvas);
+          if (faces.length === 0) {
+            setError('No face detected. Look directly at the camera and try again.');
+            setStep('idle');
+            capturingRef.current = false;
+            return;
+          }
+        } catch { /* API error — let punch through, admin reviews photo */ }
       }
-      // result === null → API not available on this device → allow punch (admin reviews photo)
     }
 
     // ── GPS ──
@@ -430,11 +457,23 @@ export default function HomePage() {
             </svg>
           </div>
 
-          {/* Hint label */}
+          {/* Live face detection status */}
           <div style={{ position: 'absolute', top: 12, left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' }}>
-            <span style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12, padding: '4px 14px', borderRadius: 20 }}>
-              {faceRequired ? '👁 Center your face in the oval' : '📸 Take your selfie'}
-            </span>
+            {faceRequired && faceInFrame === true  && (
+              <span style={{ background: 'rgba(21,128,61,0.85)', color: '#fff', fontSize: 12, fontWeight: 700, padding: '5px 16px', borderRadius: 20 }}>
+                ✓ Face detected
+              </span>
+            )}
+            {faceRequired && faceInFrame === false && (
+              <span style={{ background: 'rgba(185,28,28,0.85)', color: '#fff', fontSize: 12, fontWeight: 700, padding: '5px 16px', borderRadius: 20 }}>
+                No face — look at camera
+              </span>
+            )}
+            {(!faceRequired || faceInFrame === null) && (
+              <span style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12, padding: '4px 14px', borderRadius: 20 }}>
+                {faceRequired ? '👁 Center your face in the oval' : '📸 Take your selfie'}
+              </span>
+            )}
           </div>
 
           {/* Controls */}
@@ -447,9 +486,22 @@ export default function HomePage() {
               style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               ✕
             </button>
-            {/* Shutter */}
-            <button onClick={capture}
-              style={{ width: 72, height: 72, borderRadius: '50%', background: '#fff', border: '4px solid rgba(255,255,255,0.5)', boxShadow: '0 0 0 3px rgba(255,255,255,0.3)', cursor: 'pointer' }} />
+            {/* Shutter — red ring when face required but not detected */}
+            {(() => {
+              const blocked = faceRequired && faceInFrame === false;
+              return (
+                <button onClick={capture} disabled={blocked}
+                  style={{
+                    width: 72, height: 72, borderRadius: '50%',
+                    background: blocked ? '#fca5a5' : '#fff',
+                    border: `4px solid ${blocked ? 'rgba(239,68,68,0.6)' : 'rgba(255,255,255,0.5)'}`,
+                    boxShadow: `0 0 0 3px ${blocked ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.3)'}`,
+                    cursor: blocked ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                />
+              );
+            })()}
             <div style={{ width: 44 }} />
           </div>
         </div>
