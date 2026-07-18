@@ -10,6 +10,7 @@ import { SitesModule } from './modules/sites/sites.module';
 import { HolidaysModule } from './modules/holidays/holidays.module';
 import { LeavesModule } from './modules/leaves/leaves.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { RegularizationsModule } from './modules/regularizations/regularizations.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     HolidaysModule,
     LeavesModule,
     NotificationsModule,
+    RegularizationsModule,
   ],
 })
 export class AppModule {}

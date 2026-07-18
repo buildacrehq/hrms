@@ -25,10 +25,11 @@ model Employee {
   passwordHash  String?
   // DPDP Act: timestamp when employee accepted photo/GPS data collection
   consentAt     DateTime?
-  punches        Punch[]
-  leaveRequests  LeaveRequest[]
-  leaveBalances  LeaveBalance[]
-  createdAt      DateTime  @default(now())
+  punches          Punch[]
+  leaveRequests    LeaveRequest[]
+  leaveBalances    LeaveBalance[]
+  regularizations  Regularization[]
+  createdAt        DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   @@index([defaultSiteId])
@@ -159,6 +160,32 @@ model LeaveBalance {
   @@index([year])
 }
 
+// ─── Attendance Regularization ───────────────────────────────────────────────
+
+// Employee requests a punch correction for a day they missed punching in/out.
+// On approval the admin creates the missing Punch record(s).
+model Regularization {
+  id              String         @id @default(cuid())
+  employeeId      String
+  employee        Employee       @relation(fields: [employeeId], references: [id])
+  date            DateTime       @db.Date
+  requestType     RegType
+  // Employee's stated times (stored as "HH:MM" strings)
+  punchInTime     String?
+  punchOutTime    String?
+  reason          String
+  status          ApprovalStatus @default(PENDING)
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([date])
+}
+
 // ─── Holidays & Calendar ──────────────────────────────────────────────────────
 
 model Holiday {
@@ -254,4 +281,10 @@ enum ApprovalMode {
 enum AccrualType {
   MONTHLY
   ANNUAL
+}
+
+enum RegType {
+  PUNCH_IN
+  PUNCH_OUT
+  BOTH
 }

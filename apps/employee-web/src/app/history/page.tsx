@@ -70,6 +70,11 @@ const STATUS_DOT: Record<string, string> = {
   APPROVED: '#22c55e', PENDING: '#f59e0b', REJECTED: '#ef4444',
 };
 
+type RegForm = {
+  date: string; requestType: 'PUNCH_IN' | 'PUNCH_OUT' | 'BOTH';
+  punchInTime: string; punchOutTime: string; reason: string;
+};
+
 export default function HistoryPage() {
   const router = useRouter();
   const now = new Date();
@@ -78,6 +83,11 @@ export default function HistoryPage() {
   const [punches, setPunches] = useState<Punch[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Regularization modal
+  const [regForm,   setRegForm]   = useState<RegForm | null>(null);
+  const [regBusy,   setRegBusy]   = useState(false);
+  const [regMsg,    setRegMsg]    = useState('');
 
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
 
@@ -118,6 +128,35 @@ export default function HistoryPage() {
       if (next.has(dateStr)) next.delete(dateStr); else next.add(dateStr);
       return next;
     });
+  }
+
+  function openRegForm(dateStr: string, hasPunchIn: boolean, hasPunchOut: boolean) {
+    let requestType: 'PUNCH_IN' | 'PUNCH_OUT' | 'BOTH' = 'PUNCH_IN';
+    if (!hasPunchIn && !hasPunchOut) requestType = 'BOTH';
+    else if (!hasPunchIn)  requestType = 'PUNCH_IN';
+    else if (!hasPunchOut) requestType = 'PUNCH_OUT';
+    setRegMsg('');
+    setRegForm({ date: dateStr, requestType, punchInTime: '', punchOutTime: '', reason: '' });
+  }
+
+  async function submitReg() {
+    if (!regForm) return;
+    setRegBusy(true); setRegMsg('');
+    try {
+      await api.post('/regularizations', {
+        date: regForm.date,
+        requestType: regForm.requestType,
+        punchInTime:  regForm.punchInTime  || undefined,
+        punchOutTime: regForm.punchOutTime || undefined,
+        reason: regForm.reason,
+      });
+      setRegMsg('Request submitted!');
+      setTimeout(() => { setRegForm(null); setRegMsg(''); }, 1500);
+    } catch (e: any) {
+      setRegMsg(e?.response?.data?.message ?? 'Failed to submit');
+    } finally {
+      setRegBusy(false);
+    }
   }
 
   return (
@@ -262,6 +301,14 @@ export default function HistoryPage() {
                           📍 {day.punches[0].site.name}
                         </div>
                       )}
+                      {/* Request correction */}
+                      {(!day.inTime || !day.outTime) && new Date(day.dateStr) < now && (
+                        <button
+                          onClick={() => openRegForm(day.dateStr, !!day.inTime, !!day.outTime)}
+                          style={{ alignSelf: 'flex-start', marginTop: 4, fontSize: 12, fontWeight: 600, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '5px 12px', borderRadius: 8, cursor: 'pointer' }}>
+                          ✎ Request Correction
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -272,6 +319,71 @@ export default function HistoryPage() {
       </div>
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+      {/* Regularization modal */}
+      {regForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100, padding: '0 0 72px' }}>
+          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '24px 20px', maxHeight: '80dvh', overflowY: 'auto' }}>
+            <div style={{ fontWeight: 700, fontSize: 17, color: '#111827', marginBottom: 4 }}>Request Attendance Correction</div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>{new Date(regForm.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })}</div>
+
+            {/* Request type */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Correction Type</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['PUNCH_IN', 'PUNCH_OUT', 'BOTH'] as const).map(t => (
+                  <button key={t} onClick={() => setRegForm(f => f ? { ...f, requestType: t } : f)}
+                    style={{ flex: 1, padding: '8px 4px', borderRadius: 10, border: `1.5px solid ${regForm.requestType === t ? '#1d4ed8' : '#e5e7eb'}`, background: regForm.requestType === t ? '#eff6ff' : '#fff', fontSize: 11, fontWeight: 600, color: regForm.requestType === t ? '#1d4ed8' : '#6b7280', cursor: 'pointer' }}>
+                    {t === 'PUNCH_IN' ? 'Punch In' : t === 'PUNCH_OUT' ? 'Punch Out' : 'Both'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Times */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              {(regForm.requestType === 'PUNCH_IN' || regForm.requestType === 'BOTH') && (
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Punch-In Time</label>
+                  <input type="time" value={regForm.punchInTime} onChange={e => setRegForm(f => f ? { ...f, punchInTime: e.target.value } : f)}
+                    style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '9px 10px', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              )}
+              {(regForm.requestType === 'PUNCH_OUT' || regForm.requestType === 'BOTH') && (
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Punch-Out Time</label>
+                  <input type="time" value={regForm.punchOutTime} onChange={e => setRegForm(f => f ? { ...f, punchOutTime: e.target.value } : f)}
+                    style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '9px 10px', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              )}
+            </div>
+
+            {/* Reason */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Reason</label>
+              <textarea value={regForm.reason} onChange={e => setRegForm(f => f ? { ...f, reason: e.target.value } : f)}
+                placeholder="Briefly explain why you missed punching…"
+                rows={2}
+                style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '9px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'none' }} />
+            </div>
+
+            {regMsg && (
+              <div style={{ marginBottom: 12, fontSize: 13, color: regMsg.includes('submitted') ? '#15803d' : '#dc2626', fontWeight: 500 }}>{regMsg}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setRegForm(null)}
+                style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1.5px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={submitReg} disabled={regBusy || !regForm.reason.trim()}
+                style={{ flex: 2, padding: '12px', borderRadius: 12, border: 'none', background: '#1d4ed8', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: regBusy || !regForm.reason.trim() ? 0.6 : 1 }}>
+                {regBusy ? 'Submitting…' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Nav */}
       <BottomNav active="history" />
