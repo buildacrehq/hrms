@@ -1,10 +1,11 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Calendar, List,
   LogIn, LogOut as LogOutIcon, Clock, AlertCircle, MapPin,
+  Umbrella, RefreshCw, Check, X,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -21,7 +22,17 @@ type Punch = {
   site: { name: string };
 };
 type Holiday    = { id: string; date: string; name: string };
-type LeaveReq   = { id: string; startDate: string; endDate: string; status: string; leaveType: { name: string } };
+type LeaveReq   = {
+  id: string; fromDate: string; toDate: string; status: string;
+  reason: string | null;
+  leaveType: { name: string };
+};
+type RegReq = {
+  id: string; date: string; requestType: 'PUNCH_IN' | 'PUNCH_OUT' | 'BOTH';
+  punchInTime: string | null; punchOutTime: string | null;
+  reason: string; status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejectionReason: string | null;
+};
 type DayStatus  = 'P' | 'A' | 'W' | 'H' | 'L' | 'LP' | 'HD' | 'PEND' | 'FUT';
 type DayData    = {
   day: number; dateStr: string; dow: number; status: DayStatus;
@@ -71,7 +82,7 @@ export default function EmployeeAttendancePage() {
 
   const [year,  setYear]  = useState(() => new Date().getFullYear());
   const [month, setMonth] = useState(() => new Date().getMonth());
-  const [tab,   setTab]   = useState<'daily' | 'calendar'>('daily');
+  const [tab,   setTab]   = useState<'daily' | 'calendar' | 'leaves' | 'regs'>('daily');
 
   function prevMonth() {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
@@ -108,6 +119,22 @@ export default function EmployeeAttendancePage() {
       .then(r => r.data.data ?? r.data).catch(() => []),
     retry: false,
   });
+  const regQ = useQuery<RegReq[]>({
+    queryKey: ['emp-regs', id],
+    queryFn:  () => api.get('/admin/regularizations', { params: { employeeId: id } })
+      .then(r => r.data.data ?? r.data).catch(() => []),
+    retry: false,
+  });
+  const qc = useQueryClient();
+  const approveRegMut = useMutation({
+    mutationFn: (regId: string) => api.post(`/admin/regularizations/${regId}/approve`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['emp-regs', id] }),
+  });
+  const rejectRegMut = useMutation({
+    mutationFn: ({ regId, reason }: { regId: string; reason: string }) =>
+      api.post(`/admin/regularizations/${regId}/reject`, { reason }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['emp-regs', id] }),
+  });
 
   const employee = empQ.data;
   const punches  = punchQ.data?.punches ?? [];
@@ -128,7 +155,7 @@ export default function EmployeeAttendancePage() {
     const ld = new Set<string>(); const lp = new Set<string>();
     const ln: Record<string, string> = {};
     (leaveQ.data ?? []).forEach(lr => {
-      const start = new Date(lr.startDate); const end = new Date(lr.endDate);
+      const start = new Date(lr.fromDate); const end = new Date(lr.toDate);
       const cursor = new Date(start);
       while (cursor <= end) {
         const ds = toLocalDate(cursor.toISOString());
@@ -281,23 +308,30 @@ export default function EmployeeAttendancePage() {
       )}
 
       {/* ── Tabs ── */}
-      <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 w-fit mb-5">
-        <button onClick={() => setTab('daily')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === 'daily' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-          <List size={14} />Daily View
-        </button>
-        <button onClick={() => setTab('calendar')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === 'calendar' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-          <Calendar size={14} />Calendar View
-        </button>
+      <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 w-fit mb-5 flex-wrap">
+        {([
+          { key: 'daily',    icon: List,       label: 'Daily View'  },
+          { key: 'calendar', icon: Calendar,   label: 'Calendar'    },
+          { key: 'leaves',   icon: Umbrella,   label: 'Leaves'      },
+          { key: 'regs',     icon: RefreshCw,  label: 'Corrections' },
+        ] as const).map(({ key, icon: Icon, label }) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <Icon size={14} />{label}
+          </button>
+        ))}
       </div>
 
       {isLoading ? (
         <div className="bg-white rounded-2xl border border-slate-200 flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
       ) : tab === 'daily' ? (
         <DailyView days={days} holidayNames={holidayNames} leaveNames={leaveNames} />
-      ) : (
+      ) : tab === 'calendar' ? (
         <CalendarView days={days} year={year} month={month} holidayNames={holidayNames} leaveNames={leaveNames} />
+      ) : tab === 'leaves' ? (
+        <LeavesTab leaves={leaveQ.data ?? []} />
+      ) : (
+        <RegsTab regs={regQ.data ?? []} approveReg={approveRegMut.mutate} rejectReg={rejectRegMut.mutate} />
       )}
     </div>
   );
@@ -454,5 +488,150 @@ function CalendarView({
         </div>
       ))}
     </div>
+  );
+}
+
+/* ── Leaves Tab ──────────────────────────────────────────────── */
+const LEAVE_STATUS_COLOR: Record<string, { bg: string; text: string }> = {
+  PENDING:  { bg: '#fef9c3', text: '#92400e' },
+  APPROVED: { bg: '#dcfce7', text: '#15803d' },
+  REJECTED: { bg: '#fee2e2', text: '#b91c1c' },
+  CANCELLED:{ bg: '#f1f5f9', text: '#64748b' },
+};
+
+function LeavesTab({ leaves }: { leaves: LeaveReq[] }) {
+  if (leaves.length === 0) return (
+    <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center h-48 text-slate-400">
+      <Umbrella size={32} className="opacity-20 mb-3" />
+      <p className="font-medium text-sm">No leave requests</p>
+    </div>
+  );
+
+  function diffDays(a: string, b: string) {
+    return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000) + 1;
+  }
+  function fmtD(iso: string) {
+    return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  return (
+    <div className="space-y-3">
+      {[...leaves].sort((a, b) => b.fromDate.localeCompare(a.fromDate)).map(lr => {
+        const sc = LEAVE_STATUS_COLOR[lr.status] ?? { bg: '#f1f5f9', text: '#64748b' };
+        const days = diffDays(lr.fromDate, lr.toDate);
+        return (
+          <div key={lr.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-slate-900">{lr.leaveType.name}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1 text-sm text-slate-600">
+                  <span>{fmtD(lr.fromDate)}</span>
+                  {lr.fromDate !== lr.toDate && <><span className="text-slate-300">→</span><span>{fmtD(lr.toDate)}</span></>}
+                  <span className="text-slate-400">· {days} day{days !== 1 ? 's' : ''}</span>
+                </div>
+                {lr.reason && <p className="text-sm text-slate-500 mt-1 italic">"{lr.reason}"</p>}
+              </div>
+              <span className="shrink-0 text-xs font-bold px-2.5 py-1 rounded-full"
+                style={{ background: sc.bg, color: sc.text }}>
+                {lr.status}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Regularizations Tab ─────────────────────────────────────── */
+const REG_LABEL: Record<string, string> = {
+  PUNCH_IN: 'Missing Punch-In', PUNCH_OUT: 'Missing Punch-Out', BOTH: 'Missing Both',
+};
+
+function RegsTab({ regs, approveReg, rejectReg }: {
+  regs: RegReq[];
+  approveReg: (id: string) => void;
+  rejectReg: (args: { regId: string; reason: string }) => void;
+}) {
+  const [rejectTarget, setRejectTarget] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  if (regs.length === 0) return (
+    <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center h-48 text-slate-400">
+      <RefreshCw size={32} className="opacity-20 mb-3" />
+      <p className="font-medium text-sm">No correction requests</p>
+    </div>
+  );
+
+  const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
+    PENDING:  { bg: '#fef9c3', text: '#92400e' },
+    APPROVED: { bg: '#dcfce7', text: '#15803d' },
+    REJECTED: { bg: '#fee2e2', text: '#b91c1c' },
+  };
+
+  return (
+    <>
+      <div className="space-y-3">
+        {[...regs].sort((a, b) => b.date.localeCompare(a.date)).map(reg => {
+          const sc = STATUS_COLOR[reg.status];
+          const displayDate = new Date(reg.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+          return (
+            <div key={reg.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="text-sm font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg">{displayDate}</span>
+                    <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">{REG_LABEL[reg.requestType]}</span>
+                    {reg.punchInTime  && <span className="text-xs text-slate-500"><Clock size={10} className="inline mr-1" />IN {reg.punchInTime}</span>}
+                    {reg.punchOutTime && <span className="text-xs text-slate-500"><Clock size={10} className="inline mr-1" />OUT {reg.punchOutTime}</span>}
+                  </div>
+                  <p className="text-sm text-slate-600 italic">"{reg.reason}"</p>
+                  {reg.rejectionReason && <p className="text-sm text-red-500 mt-1">Rejected: {reg.rejectionReason}</p>}
+                </div>
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: sc.bg, color: sc.text }}>
+                    {reg.status}
+                  </span>
+                  {reg.status === 'PENDING' && (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => approveReg(reg.id)}
+                        className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
+                        <Check size={11} />Approve
+                      </button>
+                      <button onClick={() => { setRejectTarget(reg.id); setRejectReason(''); }}
+                        className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors">
+                        <X size={11} />Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {rejectTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="font-bold text-slate-900 text-lg mb-4">Reject Correction Request</h3>
+            <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+              placeholder="Reason for rejection…" rows={3}
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-400 resize-none" />
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setRejectTarget(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50">Cancel</button>
+              <button onClick={() => { rejectReg({ regId: rejectTarget, reason: rejectReason }); setRejectTarget(null); }}
+                disabled={!rejectReason.trim()}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-50">
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
