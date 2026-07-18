@@ -1,15 +1,23 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, Gender } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SmsService } from '../notifications/sms.service';
 import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { ListLeaveRequestsQueryDto } from './dto/list-leave-requests-query.dto';
 import { CreateEmployeeLeaveRequestDto } from './dto/create-employee-leave-request.dto';
 
+function fmtDate(d: Date) {
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 @Injectable()
 export class LeavesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sms: SmsService,
+  ) {}
 
   // ─── Leave Types ────────────────────────────────────────────────────────────
 
@@ -114,14 +122,19 @@ export class LeavesService {
     if (req.status !== 'PENDING') {
       throw new BadRequestException(`Leave request is already ${req.status}`);
     }
-    return this.prisma.leaveRequest.update({
+    const updated = await this.prisma.leaveRequest.update({
       where: { id },
       data: { status: 'APPROVED', approvedById: adminId, approvedAt: new Date() },
       include: {
-        employee:  { select: { id: true, name: true } },
+        employee:  { select: { id: true, name: true, phone: true } },
         leaveType: { select: { id: true, name: true } },
       },
     });
+    this.sms.send(
+      updated.employee.phone,
+      `Hi ${updated.employee.name.split(' ')[0]}, your ${updated.leaveType.name} leave from ${fmtDate(updated.fromDate)} to ${fmtDate(updated.toDate)} has been APPROVED. — BA HRMS`,
+    );
+    return updated;
   }
 
   async rejectRequest(id: string, adminId: string, reason: string) {
@@ -129,7 +142,7 @@ export class LeavesService {
     if (req.status !== 'PENDING') {
       throw new BadRequestException(`Leave request is already ${req.status}`);
     }
-    return this.prisma.leaveRequest.update({
+    const updated = await this.prisma.leaveRequest.update({
       where: { id },
       data: {
         status: 'REJECTED',
@@ -138,10 +151,15 @@ export class LeavesService {
         rejectionReason: reason,
       },
       include: {
-        employee:  { select: { id: true, name: true } },
+        employee:  { select: { id: true, name: true, phone: true } },
         leaveType: { select: { id: true, name: true } },
       },
     });
+    this.sms.send(
+      updated.employee.phone,
+      `Hi ${updated.employee.name.split(' ')[0]}, your ${updated.leaveType.name} leave request (${fmtDate(updated.fromDate)} – ${fmtDate(updated.toDate)}) has been REJECTED. Reason: ${reason} — BA HRMS`,
+    );
+    return updated;
   }
 
   // ─── Employee self-service ──────────────────────────────────────────────────
@@ -173,7 +191,7 @@ export class LeavesService {
 
     const status = leaveType.approvalMode === 'AUTO' ? 'APPROVED' : 'PENDING';
 
-    return this.prisma.leaveRequest.create({
+    const created = await this.prisma.leaveRequest.create({
       data: {
         employeeId,
         leaveTypeId: dto.leaveTypeId,
@@ -184,9 +202,17 @@ export class LeavesService {
         ...(status === 'APPROVED' ? { approvedAt: new Date() } : {}),
       },
       include: {
+        employee:  { select: { name: true, phone: true } },
         leaveType: { select: { id: true, name: true, paid: true } },
       },
     });
+
+    const msg = status === 'APPROVED'
+      ? `Hi ${created.employee.name.split(' ')[0]}, your ${created.leaveType.name} leave (${fmtDate(from)} – ${fmtDate(to)}) has been automatically approved. — BA HRMS`
+      : `Hi ${created.employee.name.split(' ')[0]}, your ${created.leaveType.name} leave request (${fmtDate(from)} – ${fmtDate(to)}) has been submitted and is pending approval. — BA HRMS`;
+    this.sms.send(created.employee.phone, msg);
+
+    return created;
   }
 
   async cancelRequest(id: string, employeeId: string) {

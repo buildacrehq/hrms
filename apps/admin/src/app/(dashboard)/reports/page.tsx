@@ -1,6 +1,6 @@
 'use client';
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDate, formatTime } from '@/lib/utils';
 import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, BarChart2, UserX, Phone, Clock } from 'lucide-react';
@@ -9,17 +9,34 @@ import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, Bar
    DAILY REPORT
 ───────────────────────────────────────────── */
 function DailyReport() {
+  const qc    = useQueryClient();
   const today = new Date();
-  const [date, setDate] = useState(today.toISOString().slice(0, 10));
+  const [date, setDate]           = useState(today.toISOString().slice(0, 10));
+  const [rejectId, setRejectId]   = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const punchQ = useQuery({
     queryKey: ['report-daily', date],
     queryFn: () => api.get('/admin/punches', { params: { date } }).then(r => r.data.data),
   });
 
+  const approveMut = useMutation({
+    mutationFn: (id: string) => api.post(`/admin/punches/${id}/approve`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['report-daily', date] }),
+  });
+  const rejectMut = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.post(`/admin/punches/${id}/reject`, { reason }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['report-daily', date] }); setRejectId(null); setRejectReason(''); },
+  });
+  const approveAllMut = useMutation({
+    mutationFn: () => api.post('/admin/punches/approve-all-normal', { date }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['report-daily', date] }),
+  });
+
   const punches  = punchQ.data?.punches ?? [];
-  const approved = punches.filter((p: any) => p.approvalStatus === 'APPROVED').length;
-  const pending  = punches.filter((p: any) => p.approvalStatus === 'PENDING').length;
+  const pending  = punches.filter((p: any) => p.approvalStatus === 'PENDING');
+  const rest     = punches.filter((p: any) => p.approvalStatus !== 'PENDING');
   const inCount  = punches.filter((p: any) => p.type === 'IN').length;
   const outCount = punches.filter((p: any) => p.type === 'OUT').length;
 
@@ -43,8 +60,58 @@ function DailyReport() {
     writeFile(wb, `attendance-${date}.xlsx`);
   }
 
-  const displayDate = new Date(date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const d           = new Date(date + 'T00:00:00');
+  const weekday     = d.toLocaleDateString('en-IN', { weekday: 'long' });
+  const longDate    = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+  const shortDate   = d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const isToday     = date === today.toISOString().slice(0, 10);
+
+  function PunchRow({ p, showActions }: { p: any; showActions: boolean }) {
+    return (
+      <tr className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
+        <td className="px-5 py-3.5">
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">
+              {p.employee.name[0]?.toUpperCase()}
+            </div>
+            <div>
+              <div className="font-semibold text-slate-900 text-sm">{p.employee.name}</div>
+              <div className="text-xs text-slate-400">{p.employee.phone}</div>
+            </div>
+          </div>
+        </td>
+        <td className="px-5 py-3.5">
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${p.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{p.type}</span>
+        </td>
+        <td className="px-5 py-3.5 text-slate-700 text-xs font-medium whitespace-nowrap">{formatTime(p.timestampServer)}</td>
+        <td className="px-5 py-3.5 text-slate-500 text-sm">{p.site?.name ?? '—'}</td>
+        <td className="px-5 py-3.5 text-slate-500 text-xs">{p.accuracy != null ? `±${Math.round(p.accuracy)}m` : '—'}</td>
+        <td className="px-5 py-3.5">
+          {showActions ? (
+            <div className="flex items-center gap-2">
+              <button onClick={() => approveMut.mutate(p.id)} disabled={approveMut.isPending}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors disabled:opacity-50">
+                Approve
+              </button>
+              <button onClick={() => { setRejectId(p.id); setRejectReason(''); }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors">
+                Reject
+              </button>
+            </div>
+          ) : (
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+              p.approvalStatus === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
+              p.approvalStatus === 'REJECTED' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                p.approvalStatus === 'APPROVED' ? 'bg-emerald-500' :
+                p.approvalStatus === 'REJECTED' ? 'bg-red-400' : 'bg-yellow-400'}`} />
+              {p.approvalStatus}
+            </span>
+          )}
+        </td>
+      </tr>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -54,8 +121,11 @@ function DailyReport() {
           <ChevronLeft size={16} />
         </button>
         <div className="flex-1 text-center">
-          <p className="font-semibold text-slate-900">{displayDate}</p>
-          {isToday && <span className="text-xs text-blue-600 font-medium">Today</span>}
+          <p className="font-semibold text-slate-900">{weekday}, {longDate}</p>
+          <div className="flex items-center justify-center gap-2 mt-0.5">
+            {isToday && <span className="text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full">Today</span>}
+            <span className="text-xs text-slate-400">{shortDate}</span>
+          </div>
         </div>
         <button onClick={() => shiftDate(1)} disabled={isToday}
           className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors disabled:opacity-30">
@@ -78,7 +148,7 @@ function DailyReport() {
           { label: 'Total Punches', count: punches.length, bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
           { label: 'IN',            count: inCount,        bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
           { label: 'OUT',           count: outCount,       bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
-          { label: 'Pending',       count: pending,        bg: '#fefce8', text: '#a16207', border: '#fde68a' },
+          { label: 'Pending',       count: pending.length, bg: '#fefce8', text: '#a16207', border: '#fde68a' },
         ].map(({ label, count, bg, text, border }) => (
           <div key={label} className="rounded-2xl p-4 text-center" style={{ background: bg, border: `1px solid ${border}` }}>
             <div className="text-3xl font-bold" style={{ color: text }}>{count}</div>
@@ -87,62 +157,109 @@ function DailyReport() {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        {punchQ.isLoading ? (
-          <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
-        ) : punches.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-slate-400">
-            <FileSpreadsheet size={32} className="opacity-25 mb-2" />
-            <p className="font-medium text-sm">No punches on this date</p>
+      {punchQ.isLoading ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex items-center justify-center h-48 text-slate-400 text-sm shadow-sm">Loading…</div>
+      ) : punches.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center h-48 text-slate-400 shadow-sm">
+          <FileSpreadsheet size={32} className="opacity-25 mb-2" />
+          <p className="font-medium text-sm">No punches on this date</p>
+        </div>
+      ) : (
+        <>
+          {/* Pending Approvals section */}
+          {pending.length > 0 && (
+            <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden shadow-sm">
+              {/* Category header */}
+              <div className="px-5 py-4 border-b border-amber-100 flex items-center justify-between"
+                style={{ background: 'linear-gradient(135deg, #fffbeb, #fef3c7)' }}>
+                <div>
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="font-bold text-amber-900 text-base">
+                      {isToday ? 'Today\'s Approvals' : `${weekday}'s Approvals`}
+                    </span>
+                    <span className="text-xs font-semibold bg-amber-400 text-white px-2 py-0.5 rounded-full">{pending.length}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 pl-4">
+                    {isToday && (
+                      <span className="text-xs text-amber-700 font-semibold bg-amber-100 px-2 py-0.5 rounded-full">Today</span>
+                    )}
+                    <span className="text-xs text-amber-600 font-medium">{weekday}, {longDate}</span>
+                    <span className="text-xs text-amber-500">·</span>
+                    <span className="text-xs text-amber-500">{shortDate}</span>
+                  </div>
+                </div>
+                <button onClick={() => approveAllMut.mutate()} disabled={approveAllMut.isPending}
+                  className="text-xs font-bold px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5">
+                  Approve All Normal
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-amber-50 border-b border-amber-100">
+                      {['Employee', 'Type', 'Time', 'Site', 'GPS', 'Action'].map(h => (
+                        <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-amber-700 uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pending.map((p: any) => <PunchRow key={p.id} p={p} showActions />)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* All punches table */}
+          {rest.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">All Punches</span>
+                <span className="text-xs text-slate-400">· {rest.length} records</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      {['Employee', 'Type', 'Time', 'Site', 'GPS', 'Status'].map(h => (
+                        <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rest.map((p: any) => <PunchRow key={p.id} p={p} showActions={false} />)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Reject modal */}
+      {rejectId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="font-bold text-slate-900 text-lg mb-4">Reject Punch</h3>
+            <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+              placeholder="Reason for rejection…"
+              rows={3}
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none" />
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setRejectId(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50">
+                Cancel
+              </button>
+              <button onClick={() => rejectMut.mutate({ id: rejectId, reason: rejectReason })}
+                disabled={rejectMut.isPending || !rejectReason.trim()}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-50">
+                {rejectMut.isPending ? 'Rejecting…' : 'Reject'}
+              </button>
+            </div>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  {['Employee', 'Type', 'Time', 'Site', 'GPS', 'Status'].map(h => (
-                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {punches.map((p: any) => (
-                  <tr key={p.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">
-                          {p.employee.name[0]?.toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-slate-900 text-sm">{p.employee.name}</div>
-                          <div className="text-xs text-slate-400">{p.employee.phone}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${p.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{p.type}</span>
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-700 text-xs font-medium whitespace-nowrap">{formatTime(p.timestampServer)}</td>
-                    <td className="px-5 py-3.5 text-slate-500 text-sm">{p.site?.name ?? '—'}</td>
-                    <td className="px-5 py-3.5 text-slate-500 text-xs">{p.accuracy != null ? `±${Math.round(p.accuracy)}m` : '—'}</td>
-                    <td className="px-5 py-3.5">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        p.approvalStatus === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
-                        p.approvalStatus === 'REJECTED' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700'}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          p.approvalStatus === 'APPROVED' ? 'bg-emerald-500' :
-                          p.approvalStatus === 'REJECTED' ? 'bg-red-400' : 'bg-yellow-400'}`} />
-                        {p.approvalStatus}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
