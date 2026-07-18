@@ -17,6 +17,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../../common/types/jwt.types';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @ApiTags('Leaves (Employee)')
 @ApiBearerAuth()
@@ -24,12 +25,16 @@ import { JwtPayload } from '../../common/types/jwt.types';
 @Roles('EMPLOYEE', 'SITE_MANAGER')
 @Controller('leaves')
 export class EmployeeLeavesController {
-  constructor(private readonly service: LeavesService) {}
+  constructor(
+    private readonly service: LeavesService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get('types')
-  @ApiOperation({ summary: 'List active leave types available for application' })
-  findTypes() {
-    return this.service.findAllTypes(false);
+  @ApiOperation({ summary: 'List active leave types filtered by employee gender' })
+  async findTypes(@CurrentUser() user: JwtPayload) {
+    const emp = await this.prisma.employee.findUnique({ where: { id: user.sub }, select: { gender: true } });
+    return this.service.findTypesForGender(emp?.gender ?? null);
   }
 
   @Get('my-requests')

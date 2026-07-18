@@ -37,6 +37,28 @@ export default function ProfilePage() {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [loading, setLoading]   = useState(true);
 
+  // Gender edit
+  const [editGender,  setEditGender]  = useState(false);
+  const [selectedGender, setSelectedGender] = useState('');
+  const [genderBusy,  setGenderBusy]  = useState(false);
+  const [genderMsg,   setGenderMsg]   = useState('');
+
+  async function saveGender() {
+    if (!selectedGender) return;
+    setGenderBusy(true); setGenderMsg('');
+    try {
+      const res = await api.patch('/employees/me', { gender: selectedGender });
+      setEmployee(prev => prev ? { ...prev, gender: (res.data.data ?? res.data).gender } : prev);
+      setEditGender(false);
+      setGenderMsg('Gender updated!');
+      setTimeout(() => setGenderMsg(''), 3000);
+    } catch {
+      setGenderMsg('Failed to update');
+    } finally {
+      setGenderBusy(false);
+    }
+  }
+
   // Change password
   const [showPwd,    setShowPwd]    = useState(false);
   const [oldPwd,     setOldPwd]     = useState('');
@@ -134,21 +156,52 @@ export default function ProfilePage() {
             Personal Details
           </div>
           {[
-            { label: 'Full Name',    value: employee.name },
-            { label: 'Phone',        value: employee.phone },
-            { label: 'Gender',       value: employee.gender ? GENDER_LABEL[employee.gender] ?? employee.gender : '—' },
-            { label: 'Site',         value: employee.defaultSite?.name ?? '—' },
-            { label: 'Joined',       value: fmtDate(employee.createdAt) },
+            { label: 'Full Name', value: employee.name },
+            { label: 'Phone',     value: employee.phone },
+            { label: 'Site',      value: employee.defaultSite?.name ?? '—' },
+            { label: 'Joined',    value: fmtDate(employee.createdAt) },
           ].map((row, i) => (
-            <div key={row.label} style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '12px 16px',
-              borderBottom: i < 4 ? '1px solid #f9fafb' : 'none',
-            }}>
+            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #f9fafb' }}>
               <span style={{ fontSize: 13, color: '#6b7280' }}>{row.label}</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{row.value}</span>
             </div>
           ))}
+
+          {/* Gender — editable */}
+          <div style={{ padding: '12px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, color: '#6b7280' }}>Gender</span>
+              {!editGender ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
+                    {employee.gender ? GENDER_LABEL[employee.gender] ?? employee.gender : '—'}
+                  </span>
+                  <button onClick={() => { setSelectedGender(employee.gender ?? 'MALE'); setEditGender(true); setGenderMsg(''); }}
+                    style={{ fontSize: 11, color: '#1d4ed8', background: '#eff6ff', border: 'none', padding: '3px 10px', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>
+                    Edit
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <select value={selectedGender} onChange={e => setSelectedGender(e.target.value)}
+                    style={{ border: '1.5px solid #1d4ed8', borderRadius: 8, padding: '4px 8px', fontSize: 13, outline: 'none' }}>
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                  <button onClick={saveGender} disabled={genderBusy}
+                    style={{ fontSize: 12, color: '#fff', background: '#1d4ed8', border: 'none', padding: '4px 12px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, opacity: genderBusy ? 0.7 : 1 }}>
+                    {genderBusy ? '…' : 'Save'}
+                  </button>
+                  <button onClick={() => setEditGender(false)}
+                    style={{ fontSize: 12, color: '#6b7280', background: '#f3f4f6', border: 'none', padding: '4px 10px', borderRadius: 8, cursor: 'pointer' }}>
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+            {genderMsg && <div style={{ fontSize: 12, color: '#15803d', marginTop: 4 }}>{genderMsg}</div>}
+          </div>
         </div>
 
         {/* Change password */}

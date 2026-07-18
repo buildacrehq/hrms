@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDate, formatTime } from '@/lib/utils';
-import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, BarChart2, UserX, Phone } from 'lucide-react';
+import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, BarChart2, UserX, Phone, Clock } from 'lucide-react';
 
 /* ─────────────────────────────────────────────
    DAILY REPORT
@@ -608,10 +608,243 @@ function AbsentReport() {
 }
 
 /* ─────────────────────────────────────────────
+   OT REPORT
+───────────────────────────────────────────── */
+function OTReport() {
+  const now = new Date();
+  const [year,  setYear]  = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth()); // 0-indexed
+
+  const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const lastDay   = new Date(year, month + 1, 0).getDate();
+  const endDate   = `${year}-${String(month + 1).padStart(2, '0')}-${lastDay}`;
+
+  const empQ = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => api.get('/admin/employees').then(r => r.data.data),
+  });
+  const punchQ = useQuery({
+    queryKey: ['ot-punches', startDate],
+    queryFn: () => api.get('/admin/punches', {
+      params: { startDate, endDate, status: 'APPROVED' },
+    }).then(r => r.data.data),
+  });
+  const settingsQ = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.get('/admin/settings').then(r => r.data.data as Record<string, string>),
+  });
+
+  const employees = empQ.data?.employees?.filter((e: any) => e.status === 'ACTIVE') ?? [];
+  const allPunches: any[] = punchQ.data?.punches ?? [];
+  const shiftEnd = settingsQ.data?.shift_end ?? '19:00';
+  const [shiftHour, shiftMin] = shiftEnd.split(':').map(Number);
+
+  // Build per-employee per-day IN/OUT map
+  const otRows = useMemo(() => {
+    const rows: { emp: any; date: string; inTime: Date; outTime: Date; workedH: number; otH: number }[] = [];
+
+    // Group approved punches by employee → date → type
+    const map = new Map<string, Map<string, { IN?: Date; OUT?: Date }>>();
+    allPunches.forEach((p: any) => {
+      const d = new Date(p.timestampServer);
+      const dateKey = d.toISOString().slice(0, 10);
+      if (!map.has(p.employee.id)) map.set(p.employee.id, new Map());
+      const dayMap = map.get(p.employee.id)!;
+      if (!dayMap.has(dateKey)) dayMap.set(dateKey, {});
+      const slot = dayMap.get(dateKey)!;
+      if (p.type === 'IN' && (!slot.IN || d < slot.IN)) slot.IN = d;
+      if (p.type === 'OUT' && (!slot.OUT || d > slot.OUT)) slot.OUT = d;
+    });
+
+    map.forEach((dayMap, empId) => {
+      const emp = employees.find((e: any) => e.id === empId);
+      if (!emp) return;
+      dayMap.forEach((slot, date) => {
+        if (!slot.IN || !slot.OUT) return;
+        const workedH = (slot.OUT.getTime() - slot.IN.getTime()) / 3600000;
+        // Calculate OT: time beyond shift end
+        const shiftEndOnDay = new Date(slot.OUT);
+        shiftEndOnDay.setHours(shiftHour, shiftMin, 0, 0);
+        const otMs = slot.OUT.getTime() - shiftEndOnDay.getTime();
+        const otH = otMs > 0 ? otMs / 3600000 : 0;
+        if (otH >= 0.5) { // only count OT ≥ 30 min
+          rows.push({ emp, date, inTime: slot.IN, outTime: slot.OUT, workedH, otH });
+        }
+      });
+    });
+
+    return rows.sort((a, b) => a.date.localeCompare(b.date) || a.emp.name.localeCompare(b.emp.name));
+  }, [allPunches, employees, shiftHour, shiftMin]);
+
+  // Per-employee OT totals
+  const empTotals = useMemo(() => {
+    const m = new Map<string, { emp: any; totalOT: number; days: number }>();
+    otRows.forEach(r => {
+      if (!m.has(r.emp.id)) m.set(r.emp.id, { emp: r.emp, totalOT: 0, days: 0 });
+      const t = m.get(r.emp.id)!;
+      t.totalOT += r.otH; t.days++;
+    });
+    return Array.from(m.values()).sort((a, b) => b.totalOT - a.totalOT);
+  }, [otRows]);
+
+  function fmtH(h: number) {
+    const hrs = Math.floor(h);
+    const mins = Math.round((h - hrs) * 60);
+    return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+  }
+  function fmtT(d: Date) {
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  }
+
+  function prevMonth() {
+    if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1);
+  }
+  function nextMonth() {
+    const next = new Date(year, month + 1);
+    if (next > now) return;
+    if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1);
+  }
+  const canGoNext = new Date(year, month + 1) <= now;
+
+  async function exportExcel() {
+    const { utils, writeFile } = await import('xlsx');
+    const rows = otRows.map(r => ({
+      Employee: r.emp.name, Date: r.date,
+      'In Time': fmtT(r.inTime), 'Out Time': fmtT(r.outTime),
+      'Worked (h)': +r.workedH.toFixed(2),
+      'OT (h)': +r.otH.toFixed(2),
+    }));
+    const ws = utils.json_to_sheet(rows);
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, 'OT');
+    writeFile(wb, `ot-${year}-${String(month + 1).padStart(2, '0')}.xlsx`);
+  }
+
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const totalOT = otRows.reduce((s, r) => s + r.otH, 0);
+  const isLoading = empQ.isLoading || punchQ.isLoading;
+
+  return (
+    <div className="space-y-5">
+      {/* Month nav */}
+      <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 flex items-center gap-4 shadow-sm">
+        <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors">
+          <ChevronLeft size={16} />
+        </button>
+        <div className="flex-1 text-center">
+          <p className="font-bold text-slate-900 text-base">{MONTH_NAMES[month]} {year}</p>
+          <p className="text-xs text-slate-400">Shift end: {shiftEnd} · Min OT threshold: 30 min</p>
+        </div>
+        <button onClick={nextMonth} disabled={!canGoNext}
+          className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors disabled:opacity-30">
+          <ChevronRight size={16} />
+        </button>
+        <div className="w-px h-6 bg-slate-200" />
+        <button onClick={exportExcel} disabled={otRows.length === 0}
+          className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40 transition-colors"
+          style={{ background: '#16a34a', color: '#fff' }}>
+          <Download size={14} />Export Excel
+        </button>
+      </div>
+
+      {/* Summary */}
+      {!isLoading && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'OT Days',       value: otRows.length,           bg: '#fef9c3', text: '#a16207', border: '#fde68a' },
+            { label: 'Total OT Hours', value: fmtH(totalOT),         bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
+            { label: 'Employees OT',   value: empTotals.length,      bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
+          ].map(({ label, value, bg, text, border }) => (
+            <div key={label} className="rounded-2xl p-4 text-center" style={{ background: bg, border: `1px solid ${border}` }}>
+              <div className="text-3xl font-bold" style={{ color: text }}>{value}</div>
+              <div className="text-xs font-semibold mt-1" style={{ color: text, opacity: 0.75 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
+      ) : otRows.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center h-48 text-slate-400">
+          <Clock size={32} className="opacity-25 mb-2" />
+          <p className="font-medium text-sm">No overtime recorded in {MONTH_NAMES[month]} {year}</p>
+          <p className="text-xs mt-1 text-slate-300">Shift end: {shiftEnd} — only approved punches counted</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Per-employee summary */}
+          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-100 text-sm font-semibold text-amber-800 flex items-center gap-2">
+              <Clock size={14} />Employee OT Summary
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  {['Employee', 'OT Days', 'Total OT'].map(h => (
+                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {empTotals.map(({ emp, totalOT: tot, days }) => (
+                  <tr key={emp.id} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                    <td className="px-5 py-3">
+                      <div className="font-semibold text-slate-800">{emp.name}</div>
+                      <div className="text-xs text-slate-400">{emp.defaultSite?.name}</div>
+                    </td>
+                    <td className="px-5 py-3 text-slate-600">{days} day{days !== 1 ? 's' : ''}</td>
+                    <td className="px-5 py-3 font-bold text-amber-700">{fmtH(tot)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Detailed log */}
+          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+            <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 text-sm font-semibold text-slate-600">
+              Daily OT Log
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    {['Date', 'Employee', 'In', 'Out', 'Worked', 'OT'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {otRows.map((r, i) => (
+                    <tr key={i} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap text-xs font-medium">
+                        {new Date(r.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-800">{r.emp.name}</td>
+                      <td className="px-4 py-3 text-emerald-700 font-medium text-xs">{fmtT(r.inTime)}</td>
+                      <td className="px-4 py-3 text-amber-700 font-medium text-xs">{fmtT(r.outTime)}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">{fmtH(r.workedH)}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg text-xs">{fmtH(r.otH)}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
    PAGE
 ───────────────────────────────────────────── */
 export default function ReportsPage() {
-  const [tab, setTab] = useState<'daily' | 'monthly' | 'absent'>('daily');
+  const [tab, setTab] = useState<'daily' | 'monthly' | 'absent' | 'ot'>('daily');
 
   return (
     <div className="min-h-full bg-slate-50">
@@ -625,9 +858,10 @@ export default function ReportsPage() {
         {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-slate-100 rounded-xl p-1 w-fit">
           {([
-            { id: 'daily',   label: 'Daily',   icon: CalendarDays },
-            { id: 'monthly', label: 'Monthly', icon: BarChart2 },
-            { id: 'absent',  label: 'Absent',  icon: UserX },
+            { id: 'daily',   label: 'Daily',    icon: CalendarDays },
+            { id: 'monthly', label: 'Monthly',  icon: BarChart2 },
+            { id: 'absent',  label: 'Absent',   icon: UserX },
+            { id: 'ot',      label: 'Overtime', icon: Clock },
           ] as const).map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id as any)}
               className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all"
@@ -644,6 +878,7 @@ export default function ReportsPage() {
         {tab === 'daily'   && <DailyReport />}
         {tab === 'monthly' && <MonthlyReport />}
         {tab === 'absent'  && <AbsentReport />}
+        {tab === 'ot'      && <OTReport />}
       </div>
     </div>
   );

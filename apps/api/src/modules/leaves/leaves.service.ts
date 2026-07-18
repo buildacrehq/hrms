@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, Gender } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
@@ -18,6 +18,19 @@ export class LeavesService {
       where: includeInactive ? {} : { isActive: true },
       orderBy: { name: 'asc' },
       include: { _count: { select: { requests: true } } },
+    });
+  }
+
+  findTypesForGender(gender: Gender | null) {
+    const scopeFilter = gender === 'MALE'
+      ? { scope: { in: ['ALL', 'MALE_ONLY'] as any } }
+      : gender === 'FEMALE'
+      ? { scope: { in: ['ALL', 'FEMALE_ONLY'] as any } }
+      : { scope: { in: ['ALL'] as any } };
+
+    return this.prisma.leaveType.findMany({
+      where: { isActive: true, ...scopeFilter },
+      orderBy: { name: 'asc' },
     });
   }
 
