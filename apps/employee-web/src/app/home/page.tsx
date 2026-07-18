@@ -362,8 +362,9 @@ export default function HomePage() {
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}>
         {[
-          { key: 'home',   href: '/home',   icon: '🏠', label: 'Attendance' },
-          { key: 'leaves', href: '/leaves', icon: '🌴', label: 'Leaves' },
+          { key: 'home',    href: '/home',    icon: '🏠', label: 'Attendance' },
+          { key: 'history', href: '/history', icon: '📋', label: 'History' },
+          { key: 'leaves',  href: '/leaves',  icon: '🌴', label: 'Leaves' },
         ].map(item => (
           <a key={item.key} href={item.href} style={{
             flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -371,8 +372,8 @@ export default function HomePage() {
             color: item.key === 'home' ? '#1d4ed8' : '#9ca3af',
             borderTop: item.key === 'home' ? '2px solid #1d4ed8' : '2px solid transparent',
           }}>
-            <span style={{ fontSize: 22, lineHeight: 1 }}>{item.icon}</span>
-            <span style={{ fontSize: 11, fontWeight: 600, marginTop: 3 }}>{item.label}</span>
+            <span style={{ fontSize: 20, lineHeight: 1 }}>{item.icon}</span>
+            <span style={{ fontSize: 10, fontWeight: 600, marginTop: 3 }}>{item.label}</span>
           </a>
         ))}
       </nav>

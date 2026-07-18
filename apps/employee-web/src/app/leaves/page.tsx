@@ -286,7 +286,12 @@ export default function LeavesPage() {
   );
 }
 
-function BottomNav({ active }: { active: 'home' | 'leaves' }) {
+function BottomNav({ active }: { active: 'home' | 'leaves' | 'history' }) {
+  const items = [
+    { key: 'home',    href: '/home',    icon: '🏠', label: 'Attendance' },
+    { key: 'history', href: '/history', icon: '📋', label: 'History' },
+    { key: 'leaves',  href: '/leaves',  icon: '🌴', label: 'Leaves' },
+  ];
   return (
     <nav style={{
       position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
@@ -294,19 +299,15 @@ function BottomNav({ active }: { active: 'home' | 'leaves' }) {
       borderTop: '1px solid #e5e7eb', display: 'flex', zIndex: 50,
       paddingBottom: 'env(safe-area-inset-bottom)',
     }}>
-      {[
-        { key: 'home',   href: '/home',   icon: '🏠', label: 'Attendance' },
-        { key: 'leaves', href: '/leaves', icon: '🌴', label: 'Leaves' },
-      ].map(item => (
+      {items.map(item => (
         <a key={item.key} href={item.href} style={{
           flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
           padding: '10px 0 8px', textDecoration: 'none',
           color: active === item.key ? '#1d4ed8' : '#9ca3af',
           borderTop: active === item.key ? '2px solid #1d4ed8' : '2px solid transparent',
-          transition: 'color 0.15s',
         }}>
-          <span style={{ fontSize: 22, lineHeight: 1 }}>{item.icon}</span>
-          <span style={{ fontSize: 11, fontWeight: 600, marginTop: 3 }}>{item.label}</span>
+          <span style={{ fontSize: 20, lineHeight: 1 }}>{item.icon}</span>
+          <span style={{ fontSize: 10, fontWeight: 600, marginTop: 3 }}>{item.label}</span>
         </a>
       ))}
     </nav>
