@@ -7,7 +7,8 @@ import { formatDate } from '@/lib/utils';
 
 export default function HolidaysPage() {
   const qc = useQueryClient();
-  const year = new Date().getFullYear();
+  const thisYear = new Date().getFullYear();
+  const [year, setYear] = useState(thisYear);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ date: '', name: '' });
 
@@ -48,11 +49,21 @@ export default function HolidaysPage() {
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-8 py-5">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Holidays</h1>
-            <p className="text-sm text-slate-500 mt-0.5">{year} calendar · {holidays.length} holiday{holidays.length !== 1 ? 's' : ''}</p>
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">Holidays</h1>
+              <p className="text-sm text-slate-500 mt-0.5">{holidays.length} holiday{holidays.length !== 1 ? 's' : ''}</p>
+            </div>
+            {/* Year navigation */}
+            <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
+              <button onClick={() => setYear(y => y - 1)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-white hover:shadow-sm transition-all text-sm font-bold">‹</button>
+              <span className="px-3 text-sm font-bold text-slate-800 min-w-14 text-center">{year}</span>
+              <button onClick={() => setYear(y => y + 1)} disabled={year >= thisYear + 1}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-white hover:shadow-sm transition-all text-sm font-bold disabled:opacity-30">›</button>
+            </div>
           </div>
-          <button onClick={() => setShowForm(v => !v)}
+          <button onClick={() => { setShowForm(v => !v); setForm({ date: `${year}-01-01`, name: '' }); }}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm shadow-blue-200">
             <Plus size={15} />Add Holiday
           </button>

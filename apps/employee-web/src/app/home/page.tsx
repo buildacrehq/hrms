@@ -8,6 +8,7 @@ type Employee = {
 };
 type PunchType = 'IN' | 'OUT';
 type PunchStep = 'idle' | 'camera' | 'detecting' | 'gps' | 'submitting' | 'done';
+type MonthStats = { present: number; absent: number; pending: number; workingDays: number };
 
 function getInitials(name: string) {
   return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
@@ -92,6 +93,10 @@ export default function HomePage() {
   const streamRef    = useRef<MediaStream | null>(null);
   const capturingRef = useRef(false);   // prevents double-tap
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const installRef   = useRef<any>(null); // beforeinstallprompt event
+
+  const [monthStats, setMonthStats] = useState<MonthStats | null>(null);
+  const [installReady, setInstallReady] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -117,7 +122,36 @@ export default function HomePage() {
         if (last?.type === 'IN' && isToday(last.timestampServer)) setNextPunch('OUT');
       })
       .catch(() => {});
+
+    // Monthly attendance summary
+    const d = new Date();
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    api.get('/punches/me', { params: { month: monthKey } })
+      .then(r => {
+        const punches: any[] = r.data.punches ?? [];
+        const presentSet = new Set<string>();
+        let pending = 0;
+        punches.forEach((p: any) => {
+          const ds = new Date(p.timestampServer).toISOString().slice(0, 10);
+          if (p.type === 'IN' && p.approvalStatus === 'APPROVED') presentSet.add(ds);
+          if (p.approvalStatus === 'PENDING') pending++;
+        });
+        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        let workingDays = 0;
+        for (let i = 1; i <= d.getDate(); i++) {
+          if (new Date(d.getFullYear(), d.getMonth(), i).getDay() !== 0) workingDays++;
+        }
+        setMonthStats({ present: presentSet.size, absent: Math.max(0, workingDays - presentSet.size), pending, workingDays });
+      })
+      .catch(() => {});
   }, [router]);
+
+  // Capture beforeinstallprompt for Add to Home Screen
+  useEffect(() => {
+    const handler = (e: Event) => { e.preventDefault(); installRef.current = e; setInstallReady(true); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
 
   // Clean up camera stream and pending timer on unmount
   useEffect(() => {
@@ -303,6 +337,50 @@ export default function HomePage() {
         <div style={{ fontSize: 44, fontWeight: 700, color: '#111827', letterSpacing: -1, lineHeight: 1 }}>{formatTime(now)}</div>
         <div style={{ fontSize: 14, color: '#6b7280', marginTop: 6 }}>{formatDate(now)}</div>
       </Card>
+
+      {/* Monthly summary */}
+      {monthStats && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+            This Month
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {[
+              { label: 'Present', value: monthStats.present, color: '#15803d', bg: '#f0fdf4' },
+              { label: 'Absent',  value: monthStats.absent,  color: '#dc2626', bg: '#fef2f2' },
+              { label: 'Pending', value: monthStats.pending, color: '#a16207', bg: '#fefce8' },
+            ].map(s => (
+              <div key={s.label} style={{ background: s.bg, borderRadius: 10, padding: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: s.color, opacity: 0.75, marginTop: 2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8, textAlign: 'center' }}>
+            {monthStats.workingDays} working days so far this month
+          </div>
+        </Card>
+      )}
+
+      {/* Install banner */}
+      {installReady && (
+        <div style={{ margin: '0 16px 12px', background: 'linear-gradient(135deg, #1d4ed8, #1e40af)', borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>Add to Home Screen</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>Install for faster access & offline use</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button onClick={async () => { await installRef.current?.prompt(); setInstallReady(false); }}
+              style={{ background: '#fff', color: '#1d4ed8', border: 'none', borderRadius: 10, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              Install
+            </button>
+            <button onClick={() => setInstallReady(false)}
+              style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none', borderRadius: 10, padding: '7px 10px', fontSize: 12, cursor: 'pointer' }}>
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Success */}
       {step === 'done' && (

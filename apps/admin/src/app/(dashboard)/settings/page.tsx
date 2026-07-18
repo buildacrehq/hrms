@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState, useEffect } from 'react';
-import { Building2, Clock, ShieldCheck, Camera, Bell, CalendarDays, Save, CheckCircle2 } from 'lucide-react';
+import { Building2, Clock, ShieldCheck, Camera, Bell, CalendarDays, Save, CheckCircle2, KeyRound } from 'lucide-react';
 
 type LocalSettings = Record<string, string>;
 
@@ -92,6 +92,65 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
       <span className="inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow transition-transform duration-200"
         style={{ transform: value ? 'translateX(22px)' : 'translateX(3px)', width: 18, height: 18, display: 'inline-block' }} />
     </button>
+  );
+}
+
+function ChangePasswordSection() {
+  const [oldPwd,  setOldPwd]  = useState('');
+  const [newPwd,  setNewPwd]  = useState('');
+  const [confPwd, setConfPwd] = useState('');
+  const [msg,     setMsg]     = useState<{ ok: boolean; text: string } | null>(null);
+
+  const mut = useMutation({
+    mutationFn: () => api.post('/auth/admin/change-password', { oldPassword: oldPwd, newPassword: newPwd }),
+    onSuccess: () => {
+      setMsg({ ok: true, text: 'Password updated!' });
+      setOldPwd(''); setNewPwd(''); setConfPwd('');
+      setTimeout(() => setMsg(null), 3000);
+    },
+    onError: (e: any) => setMsg({ ok: false, text: e?.response?.data?.message ?? 'Failed to update password' }),
+  });
+
+  function submit() {
+    setMsg(null);
+    if (!oldPwd || !newPwd) return setMsg({ ok: false, text: 'Fill in all fields' });
+    if (newPwd.length < 6)  return setMsg({ ok: false, text: 'New password must be at least 6 characters' });
+    if (newPwd !== confPwd) return setMsg({ ok: false, text: 'Passwords do not match' });
+    mut.mutate();
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
+        <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
+          <KeyRound size={16} />
+        </div>
+        <div>
+          <h2 className="font-semibold text-slate-900 text-sm">Admin Password</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Change your admin account password</p>
+        </div>
+      </div>
+      <div className="px-6 py-5 space-y-4 max-w-sm">
+        {[
+          { label: 'Current Password', value: oldPwd, set: setOldPwd },
+          { label: 'New Password',     value: newPwd, set: setNewPwd },
+          { label: 'Confirm Password', value: confPwd, set: setConfPwd },
+        ].map(f => (
+          <div key={f.label}>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">{f.label}</label>
+            <input type="password" value={f.value} onChange={e => f.set(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          </div>
+        ))}
+        {msg && (
+          <p className={`text-xs px-3 py-2 rounded-lg ${msg.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{msg.text}</p>
+        )}
+        <button onClick={submit} disabled={mut.isPending}
+          className="flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white transition-colors">
+          <Save size={14} />{mut.isPending ? 'Updating…' : 'Update Password'}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -202,6 +261,8 @@ export default function SettingsPage() {
             </div>
           );
         })}
+
+        <ChangePasswordSection />
       </div>
     </div>
   );
