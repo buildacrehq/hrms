@@ -7,8 +7,9 @@ type Employee = {
   id: string; name: string; phone: string; defaultSite?: { id: string; name: string } | null;
 };
 type PunchType = 'IN' | 'OUT';
-type PunchStep = 'idle' | 'camera' | 'detecting' | 'gps' | 'submitting' | 'done';
+type PunchStep = 'idle' | 'camera' | 'preview' | 'submitting' | 'done';
 type MonthStats = { present: number; absent: number; pending: number; workingDays: number };
+type GpsData   = { lat: number; lng: number; accuracy: number; address: string };
 
 function getInitials(name: string) {
   return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
@@ -26,9 +27,12 @@ function getGreeting() {
   return 'evening';
 }
 function isToday(isoStr: string) {
-  const d = new Date(isoStr);
-  const t = new Date();
+  const d = new Date(isoStr), t = new Date();
   return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
+}
+function fmtPunchDateTime(d: Date) {
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', weekday: 'short' })
+    + ' | ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 async function reverseGeocode(lat: number, lng: number): Promise<string> {
@@ -60,7 +64,6 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   );
 }
 
-// Returns a FaceDetector instance, or null if the API is unavailable.
 function makeFaceDetector(): any | null {
   if (!('FaceDetector' in window)) return null;
   try { return new (window as any).FaceDetector({ maxDetectedFaces: 1 }); }
@@ -74,21 +77,25 @@ export default function HomePage() {
   const [now, setNow]             = useState(new Date());
   const [nextPunch, setNextPunch] = useState<PunchType>('IN');
   const [step, setStep]           = useState<PunchStep>('idle');
-  const [statusMsg, setStatusMsg] = useState('');
   const [error, setError]         = useState('');
   const [faceRequired, setFaceRequired] = useState(true);
 
   const videoRef     = useRef<HTMLVideoElement>(null);
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const streamRef    = useRef<MediaStream | null>(null);
-  const capturingRef = useRef(false);   // prevents double-tap
+  const capturingRef = useRef(false);
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const installRef   = useRef<any>(null); // beforeinstallprompt event
+  const installRef   = useRef<any>(null);
+  const gpsResolve   = useRef<((g: GpsData | null) => void) | null>(null);
 
-  const [monthStats, setMonthStats] = useState<MonthStats | null>(null);
+  const [monthStats,   setMonthStats]   = useState<MonthStats | null>(null);
   const [installReady, setInstallReady] = useState(false);
-  // null = API not available on device, true/false = live detection result
-  const [faceInFrame, setFaceInFrame] = useState<boolean | null>(null);
+  const [faceInFrame,  setFaceInFrame]  = useState<boolean | null>(null);
+  const [gpsData,      setGpsData]      = useState<GpsData | null>(null);
+  const [gpsLoading,   setGpsLoading]   = useState(false);
+  const [previewUrl,   setPreviewUrl]   = useState<string | null>(null);
+  const [previewTime,  setPreviewTime]  = useState<Date | null>(null);
+  const [submitting,   setSubmitting]   = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -101,21 +108,13 @@ export default function HomePage() {
       .catch(() => { clearTokens(); router.replace('/login'); });
 
     api.get('/settings/mobile')
-      .then(r => {
-        const d = r.data.data ?? r.data;
-        setFaceRequired((d.require_face_detection ?? 'true') === 'true');
-      })
+      .then(r => { const d = r.data.data ?? r.data; setFaceRequired((d.require_face_detection ?? 'true') === 'true'); })
       .catch(() => {});
 
-    // Only carry over the last punch state if it happened TODAY
     api.get('/punches/my/last')
-      .then(r => {
-        const last = r.data.data;
-        if (last?.type === 'IN' && isToday(last.timestampServer)) setNextPunch('OUT');
-      })
+      .then(r => { const last = r.data.data; if (last?.type === 'IN' && isToday(last.timestampServer)) setNextPunch('OUT'); })
       .catch(() => {});
 
-    // Monthly attendance summary
     const d = new Date();
     const monthKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     api.get('/punches/me', { params: { month: monthKey } })
@@ -128,7 +127,6 @@ export default function HomePage() {
           if (p.type === 'IN' && p.approvalStatus === 'APPROVED') presentSet.add(ds);
           if (p.approvalStatus === 'PENDING') pending++;
         });
-        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
         let workingDays = 0;
         for (let i = 1; i <= d.getDate(); i++) {
           if (new Date(d.getFullYear(), d.getMonth(), i).getDay() !== 0) workingDays++;
@@ -138,18 +136,17 @@ export default function HomePage() {
       .catch(() => {});
   }, [router]);
 
-  // Capture beforeinstallprompt for Add to Home Screen
   useEffect(() => {
     const handler = (e: Event) => { e.preventDefault(); installRef.current = e; setInstallReady(true); };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // Live face detection loop — runs every 600ms while camera is active
+  // Live face detection loop while camera is open
   useEffect(() => {
     if (step !== 'camera') { setFaceInFrame(null); return; }
     const detector = makeFaceDetector();
-    if (!detector) { setFaceInFrame(null); return; } // API not available — can't enforce
+    if (!detector) { setFaceInFrame(null); return; }
     let active = true;
     async function loop() {
       while (active) {
@@ -158,10 +155,7 @@ export default function HomePage() {
           try {
             const faces = await detector.detect(video);
             if (active) setFaceInFrame(faces.length > 0);
-          } catch {
-            if (active) setFaceInFrame(null); // API broke mid-session
-            break;
-          }
+          } catch { if (active) setFaceInFrame(null); break; }
         }
         await new Promise(r => setTimeout(r, 600));
       }
@@ -170,7 +164,6 @@ export default function HomePage() {
     return () => { active = false; };
   }, [step]);
 
-  // Clean up camera stream and pending timer on unmount
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach(t => t.stop());
@@ -184,10 +177,39 @@ export default function HomePage() {
     if (videoRef.current) videoRef.current.srcObject = null;
   }, []);
 
+  const startGps = useCallback(() => {
+    setGpsData(null);
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const address = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
+        const data: GpsData = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, address };
+        setGpsData(data);
+        setGpsLoading(false);
+        gpsResolve.current?.(data);
+        gpsResolve.current = null;
+      },
+      (err) => {
+        setGpsLoading(false);
+        gpsResolve.current?.(null);
+        gpsResolve.current = null;
+        const denied = err.code === 1;
+        setError(denied
+          ? '📍 Location access required. Go to Settings → Site Permissions → Location → Allow.'
+          : 'Could not get location. Make sure GPS is on and try again.');
+      },
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  }, []);
+
   const startCamera = useCallback(async () => {
     setError('');
     capturingRef.current = false;
+    setPreviewUrl(null);
+    setPreviewTime(null);
     setStep('camera');
+    // Start GPS in parallel while user aims camera
+    startGps();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
@@ -200,21 +222,24 @@ export default function HomePage() {
       }
     } catch (err: any) {
       const denied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
-      setError(
-        denied
-          ? '📷 Camera access is required to punch. Tap Allow when your browser asks, or go to Settings → Site Permissions → Camera → Allow.'
-          : 'Camera not available. Please check your device.'
-      );
+      setError(denied
+        ? '📷 Camera access required. Go to Settings → Site Permissions → Camera → Allow.'
+        : 'Camera not available. Please check your device.');
       setStep('idle');
     }
-  }, []);
+  }, [startGps]);
 
-  const capture = useCallback(async () => {
-    if (capturingRef.current) return;   // prevent double-tap
+  const capture = useCallback(() => {
+    if (capturingRef.current) return;
     if (!videoRef.current || !canvasRef.current) return;
+
+    // Block if face required and definitively absent
+    if (faceRequired && faceInFrame === false) {
+      setError('No face detected. Look directly at the camera and try again.');
+      return;
+    }
     capturingRef.current = true;
 
-    // Capture frame to canvas (synchronous)
     const video  = videoRef.current;
     const canvas = canvasRef.current;
     canvas.width  = video.videoWidth  || 640;
@@ -225,103 +250,79 @@ export default function HomePage() {
     ctx.drawImage(video, 0, 0);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // Block immediately if live detection says no face (API available and confirmed absent)
-    if (faceRequired && faceInFrame === false) {
-      setError('No face detected. Look directly at the camera and try again.');
-      capturingRef.current = false;
-      return;
-    }
-
-    // Hide camera immediately — frame is on canvas
-    setStep('detecting');
-    setStatusMsg('Verifying…');
+    const url  = canvas.toDataURL('image/jpeg', 0.85);
+    const time = new Date();
     stopCamera();
+    setPreviewUrl(url);
+    setPreviewTime(time);
+    setStep('preview');
+    capturingRef.current = false;
+  }, [faceRequired, faceInFrame, stopCamera]);
 
-    // Final face check on the captured frame (catches edge-case where face disappeared between loop tick and shutter)
-    if (faceRequired && faceInFrame !== null) {
-      const detector = makeFaceDetector();
-      if (detector) {
-        try {
-          const faces = await detector.detect(canvas);
-          if (faces.length === 0) {
-            setError('No face detected. Look directly at the camera and try again.');
-            setStep('idle');
-            capturingRef.current = false;
-            return;
-          }
-        } catch { /* API error — let punch through, admin reviews photo */ }
-      }
+  const retake = useCallback(() => {
+    setPreviewUrl(null);
+    setPreviewTime(null);
+    startCamera();
+  }, [startCamera]);
+
+  const submitPunch = useCallback(async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setError('');
+
+    // Wait for GPS if still loading
+    let gps = gpsData;
+    if (!gps && gpsLoading) {
+      gps = await new Promise<GpsData | null>(resolve => { gpsResolve.current = resolve; });
+    }
+    if (!gps) {
+      setSubmitting(false);
+      return; // error already set by GPS handler
     }
 
-    // ── GPS ──
-    setStep('gps');
-    setStatusMsg('Getting location…');
-    let lat = 0, lng = 0, accuracy = 0, address = '';
-    try {
-      const pos = await new Promise<GeolocationPosition>((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 15000 })
-      );
-      lat      = pos.coords.latitude;
-      lng      = pos.coords.longitude;
-      accuracy = pos.coords.accuracy;
-      address  = await reverseGeocode(lat, lng);
-    } catch (err: any) {
-      const denied = err?.code === 1;
-      setError(
-        denied
-          ? '📍 Location access is required. Tap Allow when your browser asks, or go to Settings → Site Permissions → Location → Allow.'
-          : 'Could not get location. Make sure GPS is turned on and try again.'
-      );
-      setStep('idle');
-      capturingRef.current = false;
-      return;
-    }
-
-    // ── Upload photo ──
-    setStep('submitting');
-    setStatusMsg('Uploading photo…');
+    // Upload photo
     let photoKey = '';
-    try {
-      const blob     = await canvasToBlob(canvas);
-      const urlRes   = await api.post('/punches/upload-url', { type: nextPunch });
-      const { uploadUrl, uploadToken, photoKey: key } = urlRes.data.data;
-      photoKey = key;
-      await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${uploadToken}` },
-        body: blob,
-      });
-    } catch {
-      photoKey = ''; // allow punch without photo; API setting enforces requirement
+    const canvas = canvasRef.current;
+    if (canvas) {
+      try {
+        const blob   = await canvasToBlob(canvas);
+        const urlRes = await api.post('/punches/upload-url', { type: nextPunch });
+        const { uploadUrl, uploadToken, photoKey: key } = urlRes.data.data;
+        photoKey = key;
+        await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${uploadToken}` },
+          body: blob,
+        });
+      } catch { photoKey = ''; }
     }
 
-    // ── Submit punch ──
-    setStatusMsg('Submitting…');
+    // Submit punch
     try {
       await api.post('/punches', {
         type: nextPunch,
-        lat, long: lng, accuracy, address,
-        timestampDevice: new Date().toISOString(),
+        lat: gps.lat, long: gps.lng, accuracy: gps.accuracy, address: gps.address,
+        timestampDevice: (previewTime ?? new Date()).toISOString(),
         photoKey,
       });
       const wasIn = nextPunch === 'IN';
       setNextPunch(wasIn ? 'OUT' : 'IN');
+      setPreviewUrl(null);
       setStep('done');
-      setStatusMsg(`Punched ${wasIn ? 'IN' : 'OUT'} successfully!`);
-      doneTimerRef.current = setTimeout(() => {
-        setStep('idle');
-        setStatusMsg('');
-        doneTimerRef.current = null;
-      }, 3500);
+      doneTimerRef.current = setTimeout(() => { setStep('idle'); doneTimerRef.current = null; }, 3500);
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to submit. Please try again.');
-      setStep('idle');
+      setStep('preview'); // stay on preview so user can retry
+    } finally {
+      setSubmitting(false);
     }
-    capturingRef.current = false;
-  }, [faceRequired, nextPunch, stopCamera]);
+  }, [gpsData, gpsLoading, nextPunch, previewTime, submitting]);
 
   const cancel = useCallback(() => {
     stopCamera();
+    setPreviewUrl(null);
+    setPreviewTime(null);
+    setGpsData(null);
     setStep('idle');
     setError('');
     capturingRef.current = false;
@@ -334,8 +335,145 @@ export default function HomePage() {
     </div>
   );
 
-  const isBusy = step === 'detecting' || step === 'gps' || step === 'submitting';
+  // ── Camera overlay (fullscreen) ──
+  if (step === 'camera') return (
+    <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 200, display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto' }}>
+      {/* Top bar */}
+      <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 1 }}>
+        <button onClick={cancel} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', padding: 4 }}>
+          ←
+        </button>
+        <span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>
+          Mark {nextPunch === 'IN' ? 'Punch In' : 'Punch Out'}
+        </span>
+        <div style={{ width: 30 }} />
+      </div>
 
+      {/* Video */}
+      <video ref={videoRef} playsInline muted autoPlay
+        style={{ flex: 1, width: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+
+      {/* Face status badge */}
+      {faceRequired && faceInFrame !== null && (
+        <div style={{ position: 'absolute', top: 64, left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' }}>
+          <span style={{
+            background: faceInFrame ? 'rgba(21,128,61,0.88)' : 'rgba(185,28,28,0.88)',
+            color: '#fff', fontSize: 13, fontWeight: 700, padding: '6px 18px', borderRadius: 20,
+          }}>
+            {faceInFrame ? '✓ Face detected' : 'No face — look at camera'}
+          </span>
+        </div>
+      )}
+
+      {/* Bottom sheet */}
+      <div style={{ background: '#fff', borderRadius: '24px 24px 0 0', padding: '16px 24px 32px' }}>
+        {/* GPS address */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, minHeight: 28 }}>
+          <span style={{ fontSize: 16 }}>📍</span>
+          {gpsLoading ? (
+            <span style={{ fontSize: 13, color: '#9ca3af' }}>Getting location…</span>
+          ) : gpsData ? (
+            <span style={{ fontSize: 13, color: '#374151', fontWeight: 500, lineHeight: 1.4 }} className="line-clamp-2">
+              {gpsData.address}
+            </span>
+          ) : (
+            <span style={{ fontSize: 13, color: '#f59e0b' }}>Location unavailable</span>
+          )}
+        </div>
+
+        {/* Controls row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <button onClick={cancel}
+            style={{ background: 'none', border: 'none', fontSize: 15, fontWeight: 600, color: '#6b7280', cursor: 'pointer', padding: '8px 0' }}>
+            Cancel
+          </button>
+
+          {/* Shutter */}
+          {(() => {
+            const blocked = faceRequired && faceInFrame === false;
+            return (
+              <button onClick={capture} disabled={blocked}
+                style={{
+                  width: 72, height: 72, borderRadius: '50%',
+                  background: blocked ? '#fca5a5' : '#1d4ed8',
+                  border: `4px solid ${blocked ? '#fca5a5' : '#fff'}`,
+                  boxShadow: `0 0 0 3px ${blocked ? 'rgba(239,68,68,0.3)' : '#1d4ed8'}`,
+                  cursor: blocked ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              />
+            );
+          })()}
+
+          <div style={{ width: 60 }} />
+        </div>
+      </div>
+
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  // ── Preview / Confirm step ──
+  if (step === 'preview') return (
+    <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 200, display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto' }}>
+      {/* Captured photo */}
+      {previewUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={previewUrl} alt="Captured" style={{ flex: 1, width: '100%', objectFit: 'cover', display: 'block' }} />
+      )}
+
+      {/* Confirmation bottom sheet */}
+      <div style={{ background: '#fff', borderRadius: '24px 24px 0 0', padding: '20px 24px 36px' }}>
+        <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>
+          {nextPunch === 'IN' ? 'Mark Punch In' : 'Mark Punch Out'}
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: '#111827', marginBottom: 12 }}>
+          {previewTime ? fmtPunchDateTime(previewTime) : '—'}
+        </div>
+
+        {/* Address */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 20 }}>
+          <span style={{ fontSize: 14, marginTop: 1 }}>📍</span>
+          {gpsLoading ? (
+            <span style={{ fontSize: 13, color: '#9ca3af' }}>Getting location…</span>
+          ) : gpsData ? (
+            <span style={{ fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{gpsData.address}</span>
+          ) : (
+            <span style={{ fontSize: 13, color: '#f59e0b' }}>Location unavailable</span>
+          )}
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 12px', color: '#dc2626', fontSize: 13, marginBottom: 12 }}>
+            {error}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button onClick={retake} disabled={submitting}
+            style={{ flex: 1, padding: '14px', borderRadius: 14, border: '1.5px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+            Retake
+          </button>
+          <button onClick={submitPunch} disabled={submitting || (gpsLoading && !gpsData)}
+            style={{
+              flex: 2, padding: '14px', borderRadius: 14, border: 'none',
+              background: submitting ? '#93c5fd' : '#1d4ed8',
+              color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+            }}>
+            {submitting ? 'Submitting…' : gpsLoading && !gpsData ? 'Getting location…' : 'Submit'}
+          </button>
+        </div>
+      </div>
+
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  // ── Main home screen ──
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', paddingBottom: 72 }}>
 
@@ -352,7 +490,7 @@ export default function HomePage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Avatar name={employee?.name ?? ''} />
             <button onClick={() => { clearTokens(); router.replace('/login'); }}
-              style={{ background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
+              style={{ background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
               Logout
             </button>
           </div>
@@ -368,9 +506,7 @@ export default function HomePage() {
       {/* Monthly summary */}
       {monthStats && (
         <Card style={{ padding: '14px 16px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
-            This Month
-          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>This Month</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
             {[
               { label: 'Present', value: monthStats.present, color: '#15803d', bg: '#f0fdf4' },
@@ -394,7 +530,7 @@ export default function HomePage() {
         <div style={{ margin: '0 16px 12px', background: 'linear-gradient(135deg, #1d4ed8, #1e40af)', borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>Add to Home Screen</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>Install for faster access & offline use</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>Install for faster access</div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             <button onClick={async () => { await installRef.current?.prompt(); setInstallReady(false); }}
@@ -411,9 +547,11 @@ export default function HomePage() {
 
       {/* Success */}
       {step === 'done' && (
-        <Card style={{ background: '#f0fdf4', border: '1.5px solid #86efac', textAlign: 'center', padding: '18px 20px' }}>
-          <div style={{ fontSize: 28 }}>✅</div>
-          <div style={{ fontWeight: 600, color: '#16a34a', marginTop: 4 }}>{statusMsg}</div>
+        <Card style={{ background: '#f0fdf4', border: '1.5px solid #86efac', textAlign: 'center', padding: '20px' }}>
+          <div style={{ fontSize: 32 }}>✅</div>
+          <div style={{ fontWeight: 700, color: '#16a34a', fontSize: 16, marginTop: 8 }}>
+            Punched {nextPunch === 'OUT' ? 'IN' : 'OUT'} successfully!
+          </div>
         </Card>
       )}
 
@@ -427,94 +565,12 @@ export default function HomePage() {
         </Card>
       )}
 
-      {/* Busy */}
-      {isBusy && (
-        <Card style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', padding: '16px 20px', textAlign: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-            <Spinner size={18} />
-            <span style={{ color: '#1d4ed8', fontWeight: 500 }}>{statusMsg}</span>
-          </div>
-        </Card>
-      )}
-
-      {/* Camera */}
-      {step === 'camera' && (
-        <div style={{ margin: '0 16px', borderRadius: 16, overflow: 'hidden', background: '#000', position: 'relative', aspectRatio: '1/1' }}>
-          <video ref={videoRef} playsInline muted autoPlay
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
-
-          {/* Face oval guide */}
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-            <svg width="100%" height="100%" viewBox="0 0 320 320" preserveAspectRatio="xMidYMid slice">
-              <defs>
-                <mask id="face-mask">
-                  <rect width="320" height="320" fill="white" />
-                  <ellipse cx="160" cy="148" rx="100" ry="128" fill="black" />
-                </mask>
-              </defs>
-              <rect width="320" height="320" fill="rgba(0,0,0,0.38)" mask="url(#face-mask)" />
-              <ellipse cx="160" cy="148" rx="100" ry="128" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5" strokeDasharray="10 5" />
-            </svg>
-          </div>
-
-          {/* Live face detection status */}
-          <div style={{ position: 'absolute', top: 12, left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' }}>
-            {faceRequired && faceInFrame === true  && (
-              <span style={{ background: 'rgba(21,128,61,0.85)', color: '#fff', fontSize: 12, fontWeight: 700, padding: '5px 16px', borderRadius: 20 }}>
-                ✓ Face detected
-              </span>
-            )}
-            {faceRequired && faceInFrame === false && (
-              <span style={{ background: 'rgba(185,28,28,0.85)', color: '#fff', fontSize: 12, fontWeight: 700, padding: '5px 16px', borderRadius: 20 }}>
-                No face — look at camera
-              </span>
-            )}
-            {(!faceRequired || faceInFrame === null) && (
-              <span style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12, padding: '4px 14px', borderRadius: 20 }}>
-                {faceRequired ? '👁 Center your face in the oval' : '📸 Take your selfie'}
-              </span>
-            )}
-          </div>
-
-          {/* Controls */}
-          <div style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0,
-            padding: '20px', background: 'linear-gradient(transparent,rgba(0,0,0,0.6))',
-            display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 28,
-          }}>
-            <button onClick={cancel}
-              style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              ✕
-            </button>
-            {/* Shutter — red ring when face required but not detected */}
-            {(() => {
-              const blocked = faceRequired && faceInFrame === false;
-              return (
-                <button onClick={capture} disabled={blocked}
-                  style={{
-                    width: 72, height: 72, borderRadius: '50%',
-                    background: blocked ? '#fca5a5' : '#fff',
-                    border: `4px solid ${blocked ? 'rgba(239,68,68,0.6)' : 'rgba(255,255,255,0.5)'}`,
-                    boxShadow: `0 0 0 3px ${blocked ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.3)'}`,
-                    cursor: blocked ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.2s',
-                  }}
-                />
-              );
-            })()}
-            <div style={{ width: 44 }} />
-          </div>
-        </div>
-      )}
-
       {/* Punch button */}
       {step === 'idle' && (
         <div style={{ padding: '20px 16px' }}>
           <button onClick={startCamera} style={{
             width: '100%', padding: '18px 0', borderRadius: 16, border: 'none',
-            background: nextPunch === 'IN'
-              ? 'linear-gradient(135deg,#16a34a,#15803d)'
-              : 'linear-gradient(135deg,#dc2626,#b91c1c)',
+            background: nextPunch === 'IN' ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#dc2626,#b91c1c)',
             color: '#fff', fontSize: 18, fontWeight: 700,
             boxShadow: '0 4px 18px rgba(0,0,0,0.15)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
@@ -524,7 +580,7 @@ export default function HomePage() {
             Punch {nextPunch}
           </button>
           <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 10 }}>
-            {faceRequired ? 'Face + GPS required' : 'GPS required'}
+            {faceRequired ? 'Selfie + GPS required' : 'GPS required'}
           </p>
         </div>
       )}
@@ -584,10 +640,8 @@ function Avatar({ name }: { name: string }) {
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{
-      background: '#fff', margin: '0 16px 12px', borderRadius: 16,
-      boxShadow: '0 1px 6px rgba(0,0,0,0.07)',
-      ...style,
-    }}>{children}</div>
+    <div style={{ background: '#fff', margin: '0 16px 12px', borderRadius: 16, boxShadow: '0 1px 6px rgba(0,0,0,0.07)', ...style }}>
+      {children}
+    </div>
   );
 }
