@@ -11,6 +11,7 @@ type Employee = {
   role: string;
   status: string;
   createdAt: string;
+  monthlySalary: string | null;
   defaultSite: { id: string; name: string } | null;
 };
 
@@ -93,6 +94,102 @@ export default function ProfilePage() {
     } finally {
       setPwdBusy(false);
     }
+  }
+
+  // Payslip
+  const [showPayslip, setShowPayslip] = useState(false);
+  const [psYear,  setPsYear]  = useState(() => new Date().getFullYear());
+  const [psMonth, setPsMonth] = useState(() => new Date().getMonth());
+  const [psData,  setPsData]  = useState<{ punches: any[]; leaves: any[]; holidays: any[] } | null>(null);
+  const [psBusy,  setPsBusy]  = useState(false);
+
+  async function loadPayslip(y: number, m: number) {
+    setPsBusy(true);
+    const monthKey = `${y}-${String(m + 1).padStart(2,'0')}`;
+    try {
+      const [pRes, lRes, hRes] = await Promise.all([
+        api.get('/punches/me', { params: { month: monthKey } }),
+        api.get('/leaves/my-requests'),
+        api.get('/holidays', { params: { year: String(y) } }),
+      ]);
+      setPsData({
+        punches:  pRes.data.punches ?? [],
+        leaves:   lRes.data.data ?? lRes.data ?? [],
+        holidays: hRes.data.data ?? hRes.data ?? [],
+      });
+    } finally {
+      setPsBusy(false);
+    }
+  }
+
+  function psNavPrev() {
+    const nm = psMonth === 0 ? 11 : psMonth - 1;
+    const ny = psMonth === 0 ? psYear - 1 : psYear;
+    setPsMonth(nm); setPsYear(ny);
+    loadPayslip(ny, nm);
+  }
+  function psNavNext() {
+    const now = new Date();
+    if (psYear === now.getFullYear() && psMonth === now.getMonth()) return;
+    const nm = psMonth === 11 ? 0 : psMonth + 1;
+    const ny = psMonth === 11 ? psYear + 1 : psYear;
+    setPsMonth(nm); setPsYear(ny);
+    loadPayslip(ny, nm);
+  }
+
+  function togglePayslip() {
+    if (!showPayslip && !psData) loadPayslip(psYear, psMonth);
+    setShowPayslip(v => !v);
+  }
+
+  function computePayslip() {
+    if (!psData || !employee?.monthlySalary) return null;
+    const monthlySalary = parseFloat(employee.monthlySalary);
+    const lastDay = new Date(psYear, psMonth + 1, 0).getDate();
+
+    // Working days (Mon-Sat)
+    let workingDays = 0;
+    for (let d = 1; d <= lastDay; d++) {
+      if (new Date(psYear, psMonth, d).getDay() !== 0) workingDays++;
+    }
+
+    const holidaySet = new Set<string>();
+    psData.holidays.forEach((h: any) => holidaySet.add(h.date.slice(0, 10)));
+
+    // Present days (approved IN punches)
+    const presentSet = new Set<string>();
+    psData.punches.forEach((p: any) => {
+      if (p.type === 'IN' && p.approvalStatus === 'APPROVED') {
+        const d = new Date(p.timestampServer);
+        presentSet.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+      }
+    });
+
+    // Leave days in this month
+    const monthStart = `${psYear}-${String(psMonth+1).padStart(2,'0')}-01`;
+    const monthEnd   = `${psYear}-${String(psMonth+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+    let leaveDays = 0;
+    psData.leaves.forEach((lr: any) => {
+      if (lr.status !== 'APPROVED') return;
+      const cursor = new Date(lr.fromDate);
+      const end    = new Date(lr.toDate);
+      while (cursor <= end) {
+        const ds = cursor.toISOString().slice(0, 10);
+        if (ds >= monthStart && ds <= monthEnd) leaveDays++;
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    });
+
+    const dailyRate     = monthlySalary / workingDays;
+    const effectiveDays = Math.min(presentSet.size + leaveDays + holidaySet.size, workingDays);
+    const absentDays    = Math.max(0, workingDays - presentSet.size - leaveDays);
+    const earned        = Math.round(dailyRate * effectiveDays);
+
+    return {
+      monthlySalary, workingDays, presentDays: presentSet.size,
+      leaveDays, holidays: holidaySet.size, absentDays, effectiveDays,
+      dailyRate: Math.round(dailyRate), earned,
+    };
   }
 
   function logout() {
@@ -203,6 +300,84 @@ export default function ProfilePage() {
             {genderMsg && <div style={{ fontSize: 12, color: '#15803d', marginTop: 4 }}>{genderMsg}</div>}
           </div>
         </div>
+
+        {/* My Payslip */}
+        {employee.monthlySalary && (
+          <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e5e7eb', overflow: 'hidden', marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <button onClick={togglePayslip}
+              style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px' }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>💰 My Payslip</span>
+              <span style={{ fontSize: 18, color: '#9ca3af', transform: showPayslip ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>›</span>
+            </button>
+
+            {showPayslip && (
+              <div style={{ borderTop: '1px solid #f3f4f6', padding: '12px 16px 16px' }}>
+                {/* Month nav */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <button onClick={psNavPrev} style={{ border: 'none', background: '#f3f4f6', borderRadius: 8, padding: '6px 14px', fontSize: 18, cursor: 'pointer', color: '#374151', lineHeight: 1 }}>‹</button>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
+                    {new Date(psYear, psMonth).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <button onClick={psNavNext}
+                    disabled={psYear === new Date().getFullYear() && psMonth === new Date().getMonth()}
+                    style={{ border: 'none', background: '#f3f4f6', borderRadius: 8, padding: '6px 14px', fontSize: 18, cursor: 'pointer', color: '#374151', lineHeight: 1, opacity: (psYear === new Date().getFullYear() && psMonth === new Date().getMonth()) ? 0.35 : 1 }}>›</button>
+                </div>
+
+                {psBusy ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: '#9ca3af', fontSize: 13 }}>Loading…</div>
+                ) : (() => {
+                  const ps = computePayslip();
+                  if (!ps) return <div style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', padding: '16px 0' }}>No data</div>;
+                  return (
+                    <>
+                      {/* Earned badge */}
+                      <div style={{ background: 'linear-gradient(135deg, #1d4ed8, #1e40af)', borderRadius: 14, padding: '16px', marginBottom: 12, textAlign: 'center', color: '#fff' }}>
+                        <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Estimated Earned</div>
+                        <div style={{ fontSize: 30, fontWeight: 800 }}>₹{ps.earned.toLocaleString('en-IN')}</div>
+                        <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>of ₹{ps.monthlySalary.toLocaleString('en-IN')} monthly</div>
+                      </div>
+
+                      {/* Attendance breakdown */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                        {[
+                          { label: 'Present Days', value: ps.presentDays, color: '#15803d', bg: '#f0fdf4' },
+                          { label: 'Leave Days',   value: ps.leaveDays,   color: '#0369a1', bg: '#f0f9ff' },
+                          { label: 'Holidays',     value: ps.holidays,    color: '#7c3aed', bg: '#faf5ff' },
+                          { label: 'Absent Days',  value: ps.absentDays,  color: '#dc2626', bg: '#fef2f2' },
+                        ].map(s => (
+                          <div key={s.label} style={{ background: s.bg, borderRadius: 10, padding: '10px 12px' }}>
+                            <div style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: s.color, opacity: 0.75, marginTop: 2 }}>{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Rate breakdown */}
+                      <div style={{ background: '#f9fafb', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#6b7280' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span>Daily Rate</span>
+                          <span style={{ fontWeight: 600, color: '#374151' }}>₹{ps.dailyRate.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span>Working Days</span>
+                          <span style={{ fontWeight: 600, color: '#374151' }}>{ps.workingDays} days</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid #e5e7eb', marginTop: 2 }}>
+                          <span style={{ fontWeight: 600 }}>Effective Days</span>
+                          <span style={{ fontWeight: 700, color: '#1d4ed8' }}>{ps.effectiveDays} / {ps.workingDays}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8, textAlign: 'center', lineHeight: 1.5 }}>
+                        Estimated based on attendance data. Actual payout may vary.
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Change password */}
         <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e5e7eb', overflow: 'hidden', marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
