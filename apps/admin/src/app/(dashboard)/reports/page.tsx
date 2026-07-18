@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDate, formatTime } from '@/lib/utils';
-import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, BarChart2, UserX, Phone, Clock } from 'lucide-react';
+import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, BarChart2, UserX, Phone, Clock, AlarmClock } from 'lucide-react';
 
 /* ─────────────────────────────────────────────
    DAILY REPORT
@@ -958,10 +958,263 @@ function OTReport() {
 }
 
 /* ─────────────────────────────────────────────
+   LATE ARRIVALS REPORT
+───────────────────────────────────────────── */
+function LateReport() {
+  const now = new Date();
+  const [year,  setYear]  = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth());
+
+  const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const lastDay   = new Date(year, month + 1, 0).getDate();
+  const endDate   = `${year}-${String(month + 1).padStart(2, '0')}-${lastDay}`;
+  const MONTHS    = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  const empQ = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => api.get('/admin/employees').then(r => r.data.data),
+  });
+  const punchQ = useQuery({
+    queryKey: ['late-punches', startDate],
+    queryFn: () => api.get('/admin/punches', {
+      params: { startDate, endDate, status: 'APPROVED' },
+    }).then(r => r.data.data),
+  });
+  const settingsQ = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.get('/admin/settings').then(r => r.data.data as Record<string, string>),
+  });
+
+  const employees: any[] = empQ.data?.employees?.filter((e: any) => e.status === 'ACTIVE') ?? [];
+  const allPunches: any[] = punchQ.data?.punches ?? [];
+  const shiftStart  = settingsQ.data?.shift_start  ?? '10:00';
+  const graceMins   = parseInt(settingsQ.data?.grace_minutes ?? '10', 10);
+  const [shiftH, shiftM] = shiftStart.split(':').map(Number);
+
+  // Threshold in minutes from midnight
+  const thresholdMins = shiftH * 60 + shiftM + graceMins;
+
+  const lateRows = useMemo(() => {
+    // Only punch-IN records, keep only the earliest IN per employee per day
+    const earliest = new Map<string, { emp: any; inTime: Date; date: string }>();
+    allPunches.forEach((p: any) => {
+      if (p.type !== 'IN') return;
+      const d = new Date(p.timestampServer);
+      const dateKey = d.toISOString().slice(0, 10);
+      const key = `${p.employee.id}_${dateKey}`;
+      if (!earliest.has(key) || d < earliest.get(key)!.inTime) {
+        const emp = employees.find((e: any) => e.id === p.employee.id) ?? p.employee;
+        earliest.set(key, { emp, inTime: d, date: dateKey });
+      }
+    });
+
+    const rows: { emp: any; date: string; inTime: Date; lateMin: number }[] = [];
+    earliest.forEach(({ emp, inTime, date }) => {
+      const punchMins = inTime.getHours() * 60 + inTime.getMinutes();
+      const lateMin   = punchMins - thresholdMins;
+      if (lateMin > 0) rows.push({ emp, date, inTime, lateMin });
+    });
+
+    return rows.sort((a, b) => a.date.localeCompare(b.date) || a.emp.name.localeCompare(b.emp.name));
+  }, [allPunches, employees, thresholdMins]);
+
+  // Per-employee summary
+  const empSummary = useMemo(() => {
+    const m = new Map<string, { emp: any; count: number; totalLate: number }>();
+    lateRows.forEach(r => {
+      if (!m.has(r.emp.id)) m.set(r.emp.id, { emp: r.emp, count: 0, totalLate: 0 });
+      const t = m.get(r.emp.id)!;
+      t.count++; t.totalLate += r.lateMin;
+    });
+    return Array.from(m.values()).sort((a, b) => b.count - a.count || b.totalLate - a.totalLate);
+  }, [lateRows]);
+
+  function fmtDelay(mins: number) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    if (h > 0) return `${h}h ${m}m late`;
+    return `${m}m late`;
+  }
+
+  function shiftDate(d: number) {
+    const next = new Date(year, month + d);
+    if (next > now) return;
+    setYear(next.getFullYear()); setMonth(next.getMonth());
+  }
+
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  const displayMonth = `${MONTHS[month]} ${year}`;
+
+  const avgLate = lateRows.length > 0
+    ? Math.round(lateRows.reduce((s, r) => s + r.lateMin, 0) / lateRows.length)
+    : 0;
+
+  async function exportExcel() {
+    const { utils, writeFile } = await import('xlsx');
+    // Summary sheet
+    const summaryRows = empSummary.map(s => ({
+      Employee: s.emp.name,
+      Phone: s.emp.phone,
+      'Late Days': s.count,
+      'Total Late (min)': s.totalLate,
+      'Avg Late (min)': Math.round(s.totalLate / s.count),
+    }));
+    // Detail sheet
+    const detailRows = lateRows.map(r => ({
+      Date: r.date,
+      Employee: r.emp.name,
+      Phone: r.emp.phone,
+      'Punch-In': r.inTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+      'Shift Deadline': `${shiftStart} + ${graceMins}m grace`,
+      'Delay (min)': r.lateMin,
+    }));
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, utils.json_to_sheet(summaryRows), 'Summary');
+    utils.book_append_sheet(wb, utils.json_to_sheet(detailRows), 'Detail');
+    writeFile(wb, `late-arrivals-${startDate.slice(0, 7)}.xlsx`);
+  }
+
+  const isLoading = empQ.isLoading || punchQ.isLoading || settingsQ.isLoading;
+
+  return (
+    <div className="space-y-5">
+      {/* Month nav */}
+      <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 flex items-center gap-4 shadow-sm">
+        <button onClick={() => shiftDate(-1)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors">
+          <ChevronLeft size={16} />
+        </button>
+        <div className="flex-1 text-center">
+          <p className="font-semibold text-slate-900">{displayMonth}</p>
+          <p className="text-xs text-slate-400 mt-0.5">Shift {shiftStart} · {graceMins}m grace → deadline {
+            (() => { const t = thresholdMins; return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; })()
+          }</p>
+        </div>
+        <button onClick={() => shiftDate(1)} disabled={isCurrentMonth}
+          className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors disabled:opacity-30">
+          <ChevronRight size={16} />
+        </button>
+        <div className="w-px h-6 bg-slate-200" />
+        <button onClick={exportExcel} disabled={lateRows.length === 0}
+          className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40"
+          style={{ background: '#16a34a', color: '#fff' }}>
+          <Download size={14} />Export
+        </button>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: 'Late Arrivals',     value: lateRows.length,    bg: '#fefce8', text: '#a16207', border: '#fde68a' },
+          { label: 'Employees',         value: empSummary.length,  bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
+          { label: 'Avg Delay',         value: `${avgLate}m`,      bg: '#fdf4ff', text: '#7e22ce', border: '#e9d5ff' },
+          { label: 'On-Time Rate',      value: (() => {
+            const totalIn = new Set(allPunches.filter((p:any) => p.type === 'IN').map((p:any) => `${p.employee.id}_${new Date(p.timestampServer).toISOString().slice(0,10)}`)).size;
+            if (!totalIn) return '—';
+            return `${Math.round(((totalIn - lateRows.length) / totalIn) * 100)}%`;
+          })(), bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
+        ].map(({ label, value, bg, text, border }) => (
+          <div key={label} className="rounded-2xl p-4 text-center" style={{ background: bg, border: `1px solid ${border}` }}>
+            <div className="text-3xl font-bold" style={{ color: text }}>{value}</div>
+            <div className="text-xs font-semibold mt-1" style={{ color: text, opacity: 0.75 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex items-center justify-center h-40 text-slate-400 text-sm">Loading…</div>
+      ) : lateRows.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center h-40 text-slate-400">
+          <AlarmClock size={32} className="opacity-20 mb-3" />
+          <p className="font-medium text-sm">No late arrivals in {displayMonth} 🎉</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Per-employee summary */}
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Employee Summary</span>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {empSummary.map(({ emp, count, totalLate }) => {
+                const pct = Math.min(100, (count / (lastDay / 4)) * 100);
+                return (
+                  <div key={emp.id} className="px-5 py-3 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold shrink-0">
+                      {emp.name[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-slate-900 text-sm truncate">{emp.name}</div>
+                      <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-amber-400 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bold text-amber-600">{count}d</div>
+                      <div className="text-[10px] text-slate-400">{Math.round(totalLate/count)}m avg</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Daily detail */}
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Daily Detail</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    {['Date', 'Employee', 'Punch-In', 'Delay'].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lateRows.map((r, i) => (
+                    <tr key={i} className="hover:bg-amber-50 border-b border-slate-50 last:border-0 transition-colors">
+                      <td className="px-4 py-3 text-slate-600 text-xs font-medium whitespace-nowrap">
+                        {new Date(r.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">
+                            {r.emp.name[0]?.toUpperCase()}
+                          </div>
+                          <span className="font-semibold text-slate-900 text-sm">{r.emp.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700 text-xs font-semibold">
+                        {r.inTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full ${
+                          r.lateMin >= 60 ? 'bg-red-100 text-red-700' :
+                          r.lateMin >= 30 ? 'bg-orange-100 text-orange-700' :
+                                            'bg-amber-100 text-amber-700'
+                        }`}>
+                          {fmtDelay(r.lateMin)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
    PAGE
 ───────────────────────────────────────────── */
 export default function ReportsPage() {
-  const [tab, setTab] = useState<'daily' | 'monthly' | 'absent' | 'ot'>('daily');
+  const [tab, setTab] = useState<'daily' | 'monthly' | 'absent' | 'ot' | 'late'>('daily');
 
   return (
     <div className="min-h-full bg-slate-50">
@@ -978,7 +1231,8 @@ export default function ReportsPage() {
             { id: 'daily',   label: 'Daily',    icon: CalendarDays },
             { id: 'monthly', label: 'Monthly',  icon: BarChart2 },
             { id: 'absent',  label: 'Absent',   icon: UserX },
-            { id: 'ot',      label: 'Overtime', icon: Clock },
+            { id: 'ot',      label: 'Overtime',      icon: Clock },
+            { id: 'late',    label: 'Late Arrivals',  icon: AlarmClock },
           ] as const).map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id as any)}
               className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all"
@@ -996,6 +1250,7 @@ export default function ReportsPage() {
         {tab === 'monthly' && <MonthlyReport />}
         {tab === 'absent'  && <AbsentReport />}
         {tab === 'ot'      && <OTReport />}
+        {tab === 'late'    && <LateReport />}
       </div>
     </div>
   );
