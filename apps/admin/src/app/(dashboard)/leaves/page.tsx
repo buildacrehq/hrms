@@ -125,7 +125,7 @@ function LeaveTypeModal({
       <div className="space-y-4">
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Name</label>
-          <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="e.g. Casual Leave" />
         </div>
@@ -134,12 +134,12 @@ function LeaveTypeModal({
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Days Entitled</label>
             <input type="number" min="0.5" step="0.5"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={form.daysEntitled} onChange={e => setForm(f => ({ ...f, daysEntitled: parseFloat(e.target.value) }))} />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Accrual</label>
-            <select className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            <select className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={form.accrual} onChange={e => setForm(f => ({ ...f, accrual: e.target.value as any }))}>
               <option value="ANNUAL">Annual</option>
               <option value="MONTHLY">Monthly</option>
@@ -150,7 +150,7 @@ function LeaveTypeModal({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Scope</label>
-            <select className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            <select className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={form.scope} onChange={e => setForm(f => ({ ...f, scope: e.target.value as any }))}>
               <option value="ALL">All employees</option>
               <option value="MALE_ONLY">Male only</option>
@@ -160,7 +160,7 @@ function LeaveTypeModal({
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Approval</label>
-            <select className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            <select className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={form.approvalMode} onChange={e => setForm(f => ({ ...f, approvalMode: e.target.value as any }))}>
               <option value="MANUAL">Manual</option>
               <option value="AUTO">Auto-approve</option>
@@ -172,13 +172,13 @@ function LeaveTypeModal({
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Min. Eligibility (months)</label>
             <input type="number" min="0"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={form.eligibilityMinMonths} onChange={e => setForm(f => ({ ...f, eligibilityMinMonths: parseInt(e.target.value) }))} />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Max Consecutive Days</label>
             <input type="number" min="1" placeholder="No limit"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={form.maxConsecutiveDays} onChange={e => setForm(f => ({ ...f, maxConsecutiveDays: e.target.value }))} />
           </div>
         </div>
@@ -262,7 +262,7 @@ function GrantLeaveModal({
       <div className="space-y-4">
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Employee</label>
-          <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          <input className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Search by name…"
             value={form.employeeSearch}
             onChange={e => setForm(f => ({ ...f, employeeSearch: e.target.value, employeeId: '' }))} />
@@ -281,7 +281,7 @@ function GrantLeaveModal({
 
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Leave Type</label>
-          <select className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          <select className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={form.leaveTypeId} onChange={e => setForm(f => ({ ...f, leaveTypeId: e.target.value }))}>
             {leaveTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
@@ -291,13 +291,13 @@ function GrantLeaveModal({
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">From</label>
             <input type="date"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={form.fromDate} onChange={e => setForm(f => ({ ...f, fromDate: e.target.value }))} />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">To</label>
             <input type="date"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={form.toDate} onChange={e => setForm(f => ({ ...f, toDate: e.target.value }))} />
           </div>
         </div>
@@ -305,7 +305,7 @@ function GrantLeaveModal({
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Reason (optional)</label>
           <textarea rows={2}
-            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} />
         </div>
 
@@ -363,7 +363,7 @@ function RejectModal({
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Reason for rejection</label>
           <textarea rows={3} autoFocus
-            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
             placeholder="Explain why this leave is being rejected…"
             value={reason} onChange={e => setReason(e.target.value)} />
         </div>
@@ -895,7 +895,7 @@ function BalancesTab({ leaveTypes }: { leaveTypes: LeaveType[] }) {
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Employee</label>
                 <select value={adjustEmp} onChange={e => setAdjustEmp(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select employee…</option>
                   {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name}</option>)}
                 </select>
@@ -903,7 +903,7 @@ function BalancesTab({ leaveTypes }: { leaveTypes: LeaveType[] }) {
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Leave Type</label>
                 <select value={adjustType} onChange={e => setAdjustType(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select leave type…</option>
                   {leaveTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
@@ -912,7 +912,7 @@ function BalancesTab({ leaveTypes }: { leaveTypes: LeaveType[] }) {
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Days (negative to deduct)</label>
                 <input type="number" step="0.5" value={adjustAmt} onChange={e => setAdjustAmt(e.target.value)}
                   placeholder="e.g. 1.5 or -1"
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               {adjustErr && <p className="text-red-500 text-xs">{adjustErr}</p>}
             </div>
