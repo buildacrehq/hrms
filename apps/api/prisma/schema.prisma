@@ -25,6 +25,8 @@ model Employee {
   passwordHash  String?
   // DPDP Act: timestamp when employee accepted photo/GPS data collection
   consentAt     DateTime?
+  // Monthly salary in INR; null = not configured
+  monthlySalary Decimal?  @db.Decimal(10, 2)
   punches          Punch[]
   leaveRequests    LeaveRequest[]
   leaveBalances    LeaveBalance[]

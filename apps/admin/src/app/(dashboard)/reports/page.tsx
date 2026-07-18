@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDate, formatTime } from '@/lib/utils';
-import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, BarChart2, UserX, Phone, Clock, AlarmClock } from 'lucide-react';
+import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, BarChart2, UserX, Phone, Clock, AlarmClock, IndianRupee } from 'lucide-react';
 
 /* ─────────────────────────────────────────────
    DAILY REPORT
@@ -1214,7 +1214,7 @@ function LateReport() {
    PAGE
 ───────────────────────────────────────────── */
 export default function ReportsPage() {
-  const [tab, setTab] = useState<'daily' | 'monthly' | 'absent' | 'ot' | 'late'>('daily');
+  const [tab, setTab] = useState<'daily' | 'monthly' | 'absent' | 'ot' | 'late' | 'salary'>('daily');
 
   return (
     <div className="min-h-full bg-slate-50">
@@ -1233,6 +1233,7 @@ export default function ReportsPage() {
             { id: 'absent',  label: 'Absent',   icon: UserX },
             { id: 'ot',      label: 'Overtime',      icon: Clock },
             { id: 'late',    label: 'Late Arrivals',  icon: AlarmClock },
+            { id: 'salary',  label: 'Salary',         icon: IndianRupee },
           ] as const).map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id as any)}
               className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all"
@@ -1251,7 +1252,253 @@ export default function ReportsPage() {
         {tab === 'absent'  && <AbsentReport />}
         {tab === 'ot'      && <OTReport />}
         {tab === 'late'    && <LateReport />}
+        {tab === 'salary'  && <SalaryReport />}
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   SALARY REPORT
+───────────────────────────────────────────── */
+function SalaryReport() {
+  const now   = new Date();
+  const [year,  setYear]  = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth()); // 0-indexed
+
+  function prevMonth() {
+    if (month === 0) { setMonth(11); setYear(y => y - 1); }
+    else setMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (year === now.getFullYear() && month === now.getMonth()) return;
+    if (month === 11) { setMonth(0); setYear(y => y + 1); }
+    else setMonth(m => m + 1);
+  }
+
+  const monthStr   = String(month + 1).padStart(2, '0');
+  const startDate  = `${year}-${monthStr}-01`;
+  const lastDay    = new Date(year, month + 1, 0).getDate();
+  const endDate    = `${year}-${monthStr}-${String(lastDay).padStart(2,'0')}`;
+  const monthLabel = new Date(year, month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  // Count working days in month (Mon–Sat, excluding Sundays)
+  const workingDays = useMemo(() => {
+    let count = 0;
+    for (let d = 1; d <= lastDay; d++) {
+      const dow = new Date(year, month, d).getDay();
+      if (dow !== 0) count++; // exclude Sundays
+    }
+    return count;
+  }, [year, month, lastDay]);
+
+  const empQ = useQuery({
+    queryKey: ['emp-all'],
+    queryFn: () => api.get('/admin/employees', { params: { status: 'ACTIVE' } }).then(r => r.data.data),
+  });
+  const punchQ = useQuery({
+    queryKey: ['salary-punches', startDate],
+    queryFn: () => api.get('/admin/punches', { params: { startDate, endDate, status: 'APPROVED' } }).then(r => r.data.data),
+  });
+  const leaveQ = useQuery({
+    queryKey: ['salary-leaves', year, month],
+    queryFn: () => api.get('/admin/leaves/requests', {
+      params: { status: 'APPROVED' },
+    }).then(r => r.data.data ?? r.data),
+  });
+  const holidayQ = useQuery({
+    queryKey: ['holidays', year],
+    queryFn: () => api.get('/holidays', { params: { year: String(year) } }).then(r => r.data.data ?? r.data),
+  });
+
+  const employees: any[] = empQ.data?.employees ?? [];
+  const punches:   any[] = punchQ.data?.punches ?? [];
+
+  const holidaySet = useMemo(() => {
+    const s = new Set<string>();
+    (holidayQ.data ?? []).forEach((h: any) => s.add(h.date.slice(0, 10)));
+    return s;
+  }, [holidayQ.data]);
+
+  // Per-employee salary rows
+  const rows = useMemo(() => {
+    return employees
+      .filter((e: any) => e.monthlySalary != null)
+      .map((e: any) => {
+        const empPunches = punches.filter((p: any) => p.employee?.id === e.id);
+        // Get unique days with at least one approved IN punch
+        const presentDays = new Set<string>();
+        empPunches.forEach((p: any) => {
+          if (p.type === 'IN') {
+            const d = new Date(p.timestampServer);
+            presentDays.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+          }
+        });
+
+        // Count leave days in month (approved)
+        let leaveDaysInMonth = 0;
+        (leaveQ.data ?? []).forEach((lr: any) => {
+          if (lr.employee?.id !== e.id) return;
+          const start = new Date(lr.fromDate); const end = new Date(lr.toDate);
+          const cursor = new Date(start);
+          while (cursor <= end) {
+            const ds = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-${String(cursor.getDate()).padStart(2,'0')}`;
+            if (ds >= startDate && ds <= endDate) leaveDaysInMonth++;
+            cursor.setDate(cursor.getDate() + 1);
+          }
+        });
+
+        const monthlySalary = parseFloat(e.monthlySalary);
+        const dailyRate     = monthlySalary / workingDays;
+        const paidDays      = presentDays.size + leaveDaysInMonth + holidaySet.size;
+        const effectiveDays = Math.min(paidDays, workingDays);
+        const earned        = Math.round(dailyRate * effectiveDays);
+        const absentDays    = Math.max(0, workingDays - presentDays.size - leaveDaysInMonth);
+
+        return {
+          id: e.id, name: e.name, phone: e.phone,
+          site: e.defaultSite?.name ?? '—',
+          monthlySalary, dailyRate, workingDays,
+          presentDays: presentDays.size,
+          leaveDays: leaveDaysInMonth,
+          holidays: holidaySet.size,
+          absentDays,
+          effectiveDays,
+          earned,
+        };
+      })
+      .sort((a, b) => b.earned - a.earned);
+  }, [employees, punches, leaveQ.data, holidaySet, workingDays, startDate, endDate]);
+
+  const noSalary = employees.filter((e: any) => e.monthlySalary == null);
+  const totalEarned = rows.reduce((s, r) => s + r.earned, 0);
+
+  function exportExcel() {
+    import('xlsx').then(({ utils, writeFile }) => {
+      const ws = utils.json_to_sheet(rows.map(r => ({
+        'Name':           r.name,
+        'Phone':          r.phone,
+        'Site':           r.site,
+        'Monthly Salary': r.monthlySalary,
+        'Daily Rate':     Math.round(r.dailyRate),
+        'Working Days':   r.workingDays,
+        'Present Days':   r.presentDays,
+        'Leave Days':     r.leaveDays,
+        'Holidays':       r.holidays,
+        'Absent Days':    r.absentDays,
+        'Effective Days': r.effectiveDays,
+        'Earned':         r.earned,
+      })));
+      const wb = utils.book_new();
+      utils.book_append_sheet(wb, ws, 'Salary');
+      writeFile(wb, `salary-${year}-${monthStr}.xlsx`);
+    });
+  }
+
+  const isLoading = empQ.isLoading || punchQ.isLoading;
+
+  return (
+    <div className="space-y-5">
+      {/* Controls */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <button onClick={prevMonth}
+          className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors bg-white">
+          <ChevronLeft size={16} />
+        </button>
+        <span className="text-sm font-bold text-slate-700 w-40 text-center">{monthLabel}</span>
+        <button onClick={nextMonth}
+          disabled={year === now.getFullYear() && month === now.getMonth()}
+          className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors bg-white disabled:opacity-30">
+          <ChevronRight size={16} />
+        </button>
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-sm text-slate-500">{workingDays} working days</span>
+          <button onClick={exportExcel} disabled={rows.length === 0}
+            className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40 transition-colors text-white"
+            style={{ background: '#16a34a' }}>
+            <Download size={14} />Export Excel
+          </button>
+        </div>
+      </div>
+
+      {/* No salary configured warning */}
+      {noSalary.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 text-sm text-amber-800">
+          <strong>{noSalary.length} employee{noSalary.length > 1 ? 's' : ''}</strong> have no salary configured — {noSalary.slice(0, 3).map((e: any) => e.name).join(', ')}{noSalary.length > 3 ? ` +${noSalary.length - 3} more` : ''}. Set salary in the Employees page.
+        </div>
+      )}
+
+      {/* Summary */}
+      {!isLoading && rows.length > 0 && (
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-emerald-50 rounded-2xl p-4 text-center">
+            <div className="text-2xl font-extrabold text-emerald-700">₹{totalEarned.toLocaleString('en-IN')}</div>
+            <div className="text-xs text-emerald-600 font-medium mt-1">Total Payable</div>
+          </div>
+          <div className="bg-blue-50 rounded-2xl p-4 text-center">
+            <div className="text-2xl font-extrabold text-blue-700">{rows.length}</div>
+            <div className="text-xs text-blue-600 font-medium mt-1">Employees</div>
+          </div>
+          <div className="bg-slate-100 rounded-2xl p-4 text-center">
+            <div className="text-2xl font-extrabold text-slate-700">₹{rows.length > 0 ? Math.round(totalEarned / rows.length).toLocaleString('en-IN') : 0}</div>
+            <div className="text-xs text-slate-600 font-medium mt-1">Avg. Earned</div>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      {isLoading ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
+      ) : rows.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center h-48 text-slate-400">
+          <IndianRupee size={36} className="opacity-20 mb-3" />
+          <p className="font-medium text-sm">No employees with salary configured</p>
+          <p className="text-xs mt-1">Set monthly salary on each employee to see this report</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                {['Employee','Site','Monthly Salary','Present','Leave','Holidays','Absent','Earned'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-slate-900">{r.name}</div>
+                    <div className="text-xs text-slate-400">{r.phone}</div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 text-xs">{r.site}</td>
+                  <td className="px-4 py-3 text-slate-700 font-medium">₹{r.monthlySalary.toLocaleString('en-IN')}</td>
+                  <td className="px-4 py-3">
+                    <span className="text-emerald-700 font-semibold">{r.presentDays}</span>
+                    <span className="text-slate-400 text-xs">/{r.workingDays}</span>
+                  </td>
+                  <td className="px-4 py-3 text-amber-700 font-medium">{r.leaveDays}</td>
+                  <td className="px-4 py-3 text-violet-700 font-medium">{r.holidays}</td>
+                  <td className="px-4 py-3">
+                    <span className={r.absentDays > 0 ? 'text-red-600 font-semibold' : 'text-slate-400'}>{r.absentDays}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="font-bold text-slate-900">₹{r.earned.toLocaleString('en-IN')}</div>
+                    <div className="text-xs text-slate-400">₹{Math.round(r.dailyRate)}/day</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-emerald-50 border-t-2 border-emerald-200">
+                <td colSpan={7} className="px-4 py-3 text-sm font-bold text-emerald-800">Total Payable</td>
+                <td className="px-4 py-3 text-lg font-extrabold text-emerald-700">₹{totalEarned.toLocaleString('en-IN')}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

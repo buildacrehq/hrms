@@ -9,6 +9,7 @@ import { formatDate, formatTime } from '@/lib/utils';
 type Employee = {
   id: string; name: string; phone: string; gender: string;
   status: string; defaultSite: { id: string; name: string } | null;
+  monthlySalary: string | null;
 };
 type Site = { id: string; name: string };
 
@@ -224,6 +225,7 @@ function EditModal({ employee, sites, onClose }: { employee: Employee; sites: Si
     phone: employee.phone,
     gender: employee.gender,
     defaultSiteId: employee.defaultSite?.id ?? '',
+    monthlySalary: employee.monthlySalary ?? '',
   });
   const [error, setError] = useState('');
 
@@ -233,6 +235,7 @@ function EditModal({ employee, sites, onClose }: { employee: Employee; sites: Si
       phone: form.phone,
       gender: form.gender,
       defaultSiteId: form.defaultSiteId || undefined,
+      monthlySalary: form.monthlySalary ? parseFloat(form.monthlySalary) : undefined,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); onClose(); },
     onError: (e: any) => setError(e?.response?.data?.message ?? 'Error updating employee'),
@@ -271,6 +274,13 @@ function EditModal({ employee, sites, onClose }: { employee: Employee; sites: Si
               <option value="">No site assigned</option>
               {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Monthly Salary (₹) <span className="font-normal text-slate-400">optional</span></label>
+            <input type="number" min="0" step="100" value={form.monthlySalary}
+              onChange={e => setForm(f => ({ ...f, monthlySalary: e.target.value }))}
+              placeholder="e.g. 15000"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
         {error && <p className="text-red-500 text-xs bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
@@ -482,8 +492,11 @@ export default function EmployeesPage() {
                         <Avatar name={e.name} size={34} />
                         <div>
                           <span className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">{e.name}</span>
-                          <div className="flex items-center gap-1 text-xs text-slate-400 group-hover:text-blue-400 transition-colors mt-0.5">
+                            <div className="flex items-center gap-1 text-xs text-slate-400 group-hover:text-blue-400 transition-colors mt-0.5">
                             <Clock size={10} /><span>View history</span>
+                            {e.monthlySalary && (
+                              <span className="ml-1 text-emerald-600 font-semibold">· ₹{parseFloat(e.monthlySalary).toLocaleString('en-IN')}/mo</span>
+                            )}
                           </div>
                         </div>
                       </button>
