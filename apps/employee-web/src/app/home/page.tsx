@@ -58,10 +58,13 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
   }
 }
 
-async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((res, rej) =>
-    canvas.toBlob(b => (b ? res(b) : rej(new Error('Canvas empty'))), 'image/jpeg', 0.85)
-  );
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, b64] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)![1];
+  const bin  = atob(b64);
+  const arr  = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
 }
 
 function makeFaceDetector(): any | null {
@@ -81,7 +84,6 @@ export default function HomePage() {
   const [faceRequired, setFaceRequired] = useState(true);
 
   const videoRef     = useRef<HTMLVideoElement>(null);
-  const canvasRef    = useRef<HTMLCanvasElement>(null);
   const streamRef    = useRef<MediaStream | null>(null);
   const capturingRef = useRef(false);
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -231,9 +233,8 @@ export default function HomePage() {
 
   const capture = useCallback(() => {
     if (capturingRef.current) return;
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current) return;
 
-    // Block if face required and definitively absent
     if (faceRequired && faceInFrame === false) {
       setError('No face detected. Look directly at the camera and try again.');
       return;
@@ -241,14 +242,14 @@ export default function HomePage() {
     capturingRef.current = true;
 
     const video  = videoRef.current;
-    const canvas = canvasRef.current;
+    // Create canvas inline — canvasRef would be null here since camera is a separate early return
+    const canvas = document.createElement('canvas');
     canvas.width  = video.videoWidth  || 640;
     canvas.height = video.videoHeight || 640;
     const ctx = canvas.getContext('2d')!;
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     const url  = canvas.toDataURL('image/jpeg', 0.85);
     const time = new Date();
@@ -280,12 +281,11 @@ export default function HomePage() {
       return; // error already set by GPS handler
     }
 
-    // Upload photo
+    // Upload photo from previewUrl (canvasRef points to new blank canvas after step change)
     let photoKey = '';
-    const canvas = canvasRef.current;
-    if (canvas) {
+    if (previewUrl) {
       try {
-        const blob   = await canvasToBlob(canvas);
+        const blob   = dataUrlToBlob(previewUrl);
         const urlRes = await api.post('/punches/upload-url', { type: nextPunch });
         const { uploadUrl, uploadToken, photoKey: key } = urlRes.data.data;
         photoKey = key;
@@ -409,7 +409,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
@@ -468,7 +467,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
@@ -585,7 +583,6 @@ export default function HomePage() {
         </div>
       )}
 
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       <nav style={{
