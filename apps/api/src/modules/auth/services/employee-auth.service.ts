@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
@@ -42,5 +42,20 @@ export class EmployeeAuthService {
       ...this.tokens.generateTokens(employee.id, employee.role),
       employee: safeEmployee,
     };
+  }
+
+  async changePassword(employeeId: string, oldPassword: string, newPassword: string): Promise<void> {
+    const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!employee) throw new NotFoundException('Employee not found');
+
+    if (!employee.passwordHash) throw new BadRequestException('No password set — ask admin to set your initial password');
+
+    const valid = await bcrypt.compare(oldPassword, employee.passwordHash);
+    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+
+    if (newPassword.length < 6) throw new BadRequestException('New password must be at least 6 characters');
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.employee.update({ where: { id: employeeId }, data: { passwordHash: hash } });
   }
 }

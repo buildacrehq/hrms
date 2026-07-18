@@ -279,11 +279,12 @@ export default function HistoryPage() {
   );
 }
 
-function BottomNav({ active }: { active: 'home' | 'leaves' | 'history' }) {
+function BottomNav({ active }: { active: 'home' | 'leaves' | 'history' | 'profile' }) {
   const items = [
     { key: 'home',    href: '/home',    icon: '🏠', label: 'Attendance' },
     { key: 'history', href: '/history', icon: '📋', label: 'History' },
     { key: 'leaves',  href: '/leaves',  icon: '🌴', label: 'Leaves' },
+    { key: 'profile', href: '/profile', icon: '👤', label: 'Profile' },
   ];
   return (
     <nav style={{
@@ -295,12 +296,12 @@ function BottomNav({ active }: { active: 'home' | 'leaves' | 'history' }) {
       {items.map(item => (
         <a key={item.key} href={item.href} style={{
           flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-          padding: '10px 0 8px', textDecoration: 'none',
+          padding: '8px 0 6px', textDecoration: 'none',
           color: active === item.key ? '#1d4ed8' : '#9ca3af',
           borderTop: active === item.key ? '2px solid #1d4ed8' : '2px solid transparent',
         }}>
-          <span style={{ fontSize: 20, lineHeight: 1 }}>{item.icon}</span>
-          <span style={{ fontSize: 10, fontWeight: 600, marginTop: 3 }}>{item.label}</span>
+          <span style={{ fontSize: 18, lineHeight: 1 }}>{item.icon}</span>
+          <span style={{ fontSize: 10, fontWeight: 600, marginTop: 2 }}>{item.label}</span>
         </a>
       ))}
     </nav>
