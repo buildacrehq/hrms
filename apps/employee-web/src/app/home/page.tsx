@@ -12,20 +12,22 @@ type PunchStep = 'idle' | 'camera' | 'detecting' | 'gps' | 'submitting' | 'done'
 function getInitials(name: string) {
   return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
 }
-
 function formatTime(d: Date) {
   return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
-
 function formatDate(d: Date) {
   return d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 }
-
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return 'morning';
   if (h < 17) return 'afternoon';
   return 'evening';
+}
+function isToday(isoStr: string) {
+  const d = new Date(isoStr);
+  const t = new Date();
+  return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
 }
 
 async function reverseGeocode(lat: number, lng: number): Promise<string> {
@@ -57,37 +59,39 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   );
 }
 
-type FaceResult = { detected: boolean; error?: string };
-
-async function detectFaceOnCanvas(canvas: HTMLCanvasElement): Promise<FaceResult> {
-  // Native FaceDetector API — instant, no model download, works on Chrome Android
-  if ('FaceDetector' in window) {
-    try {
-      const detector = new (window as any).FaceDetector({ maxDetectedFaces: 1, fastMode: true });
-      const faces = await detector.detect(canvas);
-      return { detected: faces.length > 0 };
-    } catch {
-      return { detected: true }; // API exists but failed — allow punch
-    }
+// FaceDetector: Chrome Android only. Two attempts to handle warm-up lag.
+// Returns true when a face is found, false when definitively none, null when API unavailable.
+async function detectFace(canvas: HTMLCanvasElement): Promise<boolean | null> {
+  if (!('FaceDetector' in window)) return null; // API not present — skip
+  try {
+    const detector = new (window as any).FaceDetector({ maxDetectedFaces: 1 });
+    let faces = await detector.detect(canvas);
+    if (faces.length > 0) return true;
+    // Give the camera one more chance (sometimes first frame is dark)
+    await new Promise(r => setTimeout(r, 600));
+    faces = await detector.detect(canvas);
+    return faces.length > 0;
+  } catch {
+    return null; // API threw — treat as unavailable
   }
-  // Not supported (iOS Safari, Firefox) — allow punch
-  return { detected: true };
 }
 
 export default function HomePage() {
   const router = useRouter();
-  const [employee, setEmployee] = useState<Employee | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [now, setNow] = useState(new Date());
+  const [employee, setEmployee]   = useState<Employee | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [now, setNow]             = useState(new Date());
   const [nextPunch, setNextPunch] = useState<PunchType>('IN');
-  const [step, setStep] = useState<PunchStep>('idle');
+  const [step, setStep]           = useState<PunchStep>('idle');
   const [statusMsg, setStatusMsg] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError]         = useState('');
   const [faceRequired, setFaceRequired] = useState(true);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const videoRef     = useRef<HTMLVideoElement>(null);
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const streamRef    = useRef<MediaStream | null>(null);
+  const capturingRef = useRef(false);   // prevents double-tap
+  const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -96,7 +100,7 @@ export default function HomePage() {
 
   useEffect(() => {
     api.get('/employees/me')
-      .then(r => { setEmployee(r.data.data); setLoading(false); })
+      .then(r => { setEmployee(r.data.data ?? r.data); setLoading(false); })
       .catch(() => { clearTokens(); router.replace('/login'); });
 
     api.get('/settings/mobile')
@@ -106,10 +110,22 @@ export default function HomePage() {
       })
       .catch(() => {});
 
+    // Only carry over the last punch state if it happened TODAY
     api.get('/punches/my/last')
-      .then(r => { if (r.data.data?.type === 'IN') setNextPunch('OUT'); })
+      .then(r => {
+        const last = r.data.data;
+        if (last?.type === 'IN' && isToday(last.timestampServer)) setNextPunch('OUT');
+      })
       .catch(() => {});
   }, [router]);
+
+  // Clean up camera stream and pending timer on unmount
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      if (doneTimerRef.current) clearTimeout(doneTimerRef.current);
+    };
+  }, []);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop());
@@ -119,6 +135,7 @@ export default function HomePage() {
 
   const startCamera = useCallback(async () => {
     setError('');
+    capturingRef.current = false;
     setStep('camera');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -128,13 +145,13 @@ export default function HomePage() {
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        await videoRef.current.play().catch(() => {});
       }
     } catch (err: any) {
       const denied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
       setError(
         denied
-          ? '📷 Camera access is required to punch. Please tap Allow when your browser asks, then try again. If you already denied it, go to your browser Settings → Site Permissions → Camera → Allow.'
+          ? '📷 Camera access is required to punch. Tap Allow when your browser asks, or go to Settings → Site Permissions → Camera → Allow.'
           : 'Camera not available. Please check your device.'
       );
       setStep('idle');
@@ -142,34 +159,37 @@ export default function HomePage() {
   }, []);
 
   const capture = useCallback(async () => {
+    if (capturingRef.current) return;   // prevent double-tap
     if (!videoRef.current || !canvasRef.current) return;
-    const video = videoRef.current;
+    capturingRef.current = true;
+
+    // Capture frame to canvas (synchronous)
+    const video  = videoRef.current;
     const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    // Mirror to match preview
+    canvas.width  = video.videoWidth  || 640;
+    canvas.height = video.videoHeight || 640;
     const ctx = canvas.getContext('2d')!;
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // Hide camera immediately — frame is on canvas
+    setStep('detecting');
+    setStatusMsg('Verifying face…');
     stopCamera();
 
     // ── Face detection ──
     if (faceRequired) {
-      setStep('detecting');
-      setStatusMsg('Verifying face…');
-      const result = await detectFaceOnCanvas(canvas);
-      if (result.error) {
-        setError(result.error);
-        setStep('idle');
-        return;
-      }
-      if (!result.detected) {
+      const result = await detectFace(canvas);
+      if (result === false) {
+        // Definitively no face (API available and returned empty)
         setError('No face detected. Look directly at the camera and try again.');
         setStep('idle');
+        capturingRef.current = false;
         return;
       }
+      // result === null → API not available on this device → allow punch (admin reviews photo)
     }
 
     // ── GPS ──
@@ -180,28 +200,29 @@ export default function HomePage() {
       const pos = await new Promise<GeolocationPosition>((res, rej) =>
         navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 15000 })
       );
-      lat = pos.coords.latitude;
-      lng = pos.coords.longitude;
+      lat      = pos.coords.latitude;
+      lng      = pos.coords.longitude;
       accuracy = pos.coords.accuracy;
-      address = await reverseGeocode(lat, lng);
+      address  = await reverseGeocode(lat, lng);
     } catch (err: any) {
-      const denied = err?.code === 1; // PERMISSION_DENIED
+      const denied = err?.code === 1;
       setError(
         denied
-          ? '📍 Location access is required to punch. Please tap Allow when your browser asks, then try again. If already denied, go to browser Settings → Site Permissions → Location → Allow.'
+          ? '📍 Location access is required. Tap Allow when your browser asks, or go to Settings → Site Permissions → Location → Allow.'
           : 'Could not get location. Make sure GPS is turned on and try again.'
       );
       setStep('idle');
+      capturingRef.current = false;
       return;
     }
 
-    // ── Upload photo via Supabase signed URL ──
+    // ── Upload photo ──
     setStep('submitting');
     setStatusMsg('Uploading photo…');
     let photoKey = '';
     try {
-      const blob = await canvasToBlob(canvas);
-      const urlRes = await api.post('/punches/upload-url', { type: nextPunch });
+      const blob     = await canvasToBlob(canvas);
+      const urlRes   = await api.post('/punches/upload-url', { type: nextPunch });
       const { uploadUrl, uploadToken, photoKey: key } = urlRes.data.data;
       photoKey = key;
       await fetch(uploadUrl, {
@@ -210,12 +231,11 @@ export default function HomePage() {
         body: blob,
       });
     } catch {
-      // Photo upload failed; allow punch without photo (API setting controls this)
-      photoKey = '';
+      photoKey = ''; // allow punch without photo; API setting enforces requirement
     }
 
     // ── Submit punch ──
-    setStatusMsg('Submitting punch…');
+    setStatusMsg('Submitting…');
     try {
       await api.post('/punches', {
         type: nextPunch,
@@ -227,22 +247,29 @@ export default function HomePage() {
       setNextPunch(wasIn ? 'OUT' : 'IN');
       setStep('done');
       setStatusMsg(`Punched ${wasIn ? 'IN' : 'OUT'} successfully!`);
-      setTimeout(() => { setStep('idle'); setStatusMsg(''); }, 3500);
+      doneTimerRef.current = setTimeout(() => {
+        setStep('idle');
+        setStatusMsg('');
+        doneTimerRef.current = null;
+      }, 3500);
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to submit. Please try again.');
       setStep('idle');
     }
+    capturingRef.current = false;
   }, [faceRequired, nextPunch, stopCamera]);
 
   const cancel = useCallback(() => {
     stopCamera();
     setStep('idle');
     setError('');
+    capturingRef.current = false;
   }, [stopCamera]);
 
   if (loading) return (
     <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Spinner size={32} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 
@@ -250,22 +277,23 @@ export default function HomePage() {
 
   return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', paddingBottom: 72 }}>
+
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1d4ed8, #1e40af)', padding: '48px 20px 22px', color: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontSize: 13, opacity: 0.8 }}>Good {getGreeting()},</div>
-            <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2 }}>{employee?.name}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2 }}>{employee?.name ?? '…'}</div>
             {employee?.defaultSite && (
               <div style={{ fontSize: 12, opacity: 0.7, marginTop: 3 }}>📍 {employee.defaultSite.name}</div>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Avatar name={employee?.name ?? ''} />
-            <button
-              onClick={() => { clearTokens(); router.replace('/login'); }}
-              style={{ background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 12 }}
-            >Logout</button>
+            <button onClick={() => { clearTokens(); router.replace('/login'); }}
+              style={{ background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
+              Logout
+            </button>
           </div>
         </div>
       </div>
@@ -276,19 +304,25 @@ export default function HomePage() {
         <div style={{ fontSize: 14, color: '#6b7280', marginTop: 6 }}>{formatDate(now)}</div>
       </Card>
 
-      {/* Alerts */}
+      {/* Success */}
       {step === 'done' && (
         <Card style={{ background: '#f0fdf4', border: '1.5px solid #86efac', textAlign: 'center', padding: '18px 20px' }}>
           <div style={{ fontSize: 28 }}>✅</div>
           <div style={{ fontWeight: 600, color: '#16a34a', marginTop: 4 }}>{statusMsg}</div>
         </Card>
       )}
+
+      {/* Error */}
       {error && (
         <Card style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', padding: '12px 16px' }}>
           <div style={{ color: '#dc2626', fontSize: 14 }}>{error}</div>
-          <button onClick={() => setError('')} style={{ color: '#dc2626', background: 'none', border: 'none', fontSize: 12, marginTop: 4, padding: 0, textDecoration: 'underline' }}>Dismiss</button>
+          <button onClick={() => setError('')} style={{ color: '#dc2626', background: 'none', border: 'none', fontSize: 12, marginTop: 4, padding: 0, textDecoration: 'underline', cursor: 'pointer' }}>
+            Dismiss
+          </button>
         </Card>
       )}
+
+      {/* Busy */}
       {isBusy && (
         <Card style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', padding: '16px 20px', textAlign: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
@@ -300,29 +334,44 @@ export default function HomePage() {
 
       {/* Camera */}
       {step === 'camera' && (
-        <div style={{ margin: '0 16px', borderRadius: 16, overflow: 'hidden', background: '#000', position: 'relative' }}>
+        <div style={{ margin: '0 16px', borderRadius: 16, overflow: 'hidden', background: '#000', position: 'relative', aspectRatio: '1/1' }}>
           <video ref={videoRef} playsInline muted autoPlay
-            style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0,
-            padding: '12px 0', textAlign: 'center',
-          }}>
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+
+          {/* Face oval guide */}
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+            <svg width="100%" height="100%" viewBox="0 0 320 320" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <mask id="face-mask">
+                  <rect width="320" height="320" fill="white" />
+                  <ellipse cx="160" cy="148" rx="100" ry="128" fill="black" />
+                </mask>
+              </defs>
+              <rect width="320" height="320" fill="rgba(0,0,0,0.38)" mask="url(#face-mask)" />
+              <ellipse cx="160" cy="148" rx="100" ry="128" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5" strokeDasharray="10 5" />
+            </svg>
+          </div>
+
+          {/* Hint label */}
+          <div style={{ position: 'absolute', top: 12, left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' }}>
             <span style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 12, padding: '4px 14px', borderRadius: 20 }}>
-              {faceRequired ? '👁 Face required — look at camera' : '📸 Take your selfie'}
+              {faceRequired ? '👁 Center your face in the oval' : '📸 Take your selfie'}
             </span>
           </div>
+
+          {/* Controls */}
           <div style={{
             position: 'absolute', bottom: 0, left: 0, right: 0,
             padding: '20px', background: 'linear-gradient(transparent,rgba(0,0,0,0.6))',
             display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 28,
           }}>
             <button onClick={cancel}
-              style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               ✕
             </button>
             {/* Shutter */}
             <button onClick={capture}
-              style={{ width: 70, height: 70, borderRadius: '50%', background: '#fff', border: '4px solid #fff', boxShadow: '0 0 0 3px rgba(255,255,255,0.4)' }} />
+              style={{ width: 72, height: 72, borderRadius: '50%', background: '#fff', border: '4px solid rgba(255,255,255,0.5)', boxShadow: '0 0 0 3px rgba(255,255,255,0.3)', cursor: 'pointer' }} />
             <div style={{ width: 44 }} />
           </div>
         </div>
@@ -339,22 +388,20 @@ export default function HomePage() {
             color: '#fff', fontSize: 18, fontWeight: 700,
             boxShadow: '0 4px 18px rgba(0,0,0,0.15)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+            cursor: 'pointer',
           }}>
             <span style={{ fontSize: 24 }}>{nextPunch === 'IN' ? '🟢' : '🔴'}</span>
             Punch {nextPunch}
           </button>
           <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 10 }}>
-            {faceRequired ? 'Face detection + GPS required' : 'GPS required'}
+            {faceRequired ? 'Face + GPS required' : 'GPS required'}
           </p>
         </div>
       )}
 
-      {/* Hidden canvas */}
       <canvas ref={canvasRef} style={{ display: 'none' }} />
-
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
-      {/* Bottom Nav */}
       <nav style={{
         position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
         width: '100%', maxWidth: 480, background: '#fff',
