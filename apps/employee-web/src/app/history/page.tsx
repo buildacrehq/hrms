@@ -71,7 +71,13 @@ const STATUS_DOT: Record<string, string> = {
 };
 
 type Holiday = { id: string; date: string; name: string };
-type LeaveReq = { id: string; startDate: string; endDate: string; status: string; leaveType: { name: string } };
+type LeaveReq = { id: string; fromDate: string; toDate: string; status: string; leaveType: { name: string } };
+type RegReq = {
+  id: string; date: string; requestType: 'PUNCH_IN' | 'PUNCH_OUT' | 'BOTH';
+  punchInTime: string | null; punchOutTime: string | null;
+  reason: string; status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejectionReason: string | null; createdAt: string;
+};
 
 type RegForm = {
   date: string; requestType: 'PUNCH_IN' | 'PUNCH_OUT' | 'BOTH';
@@ -106,7 +112,8 @@ export default function HistoryPage() {
   const [leaves,   setLeaves]   = useState<LeaveReq[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [viewTab, setViewTab] = useState<'list' | 'calendar'>('list');
+  const [viewTab, setViewTab] = useState<'list' | 'calendar' | 'corrections'>('list');
+  const [regReqs, setRegReqs] = useState<RegReq[]>([]);
 
   // Regularization modal
   const [regForm,   setRegForm]   = useState<RegForm | null>(null);
@@ -123,11 +130,13 @@ export default function HistoryPage() {
       api.get('/punches/me', { params: { month: monthKey } }),
       api.get('/holidays', { params: { year: String(year) } }).catch(() => ({ data: { data: [] } })),
       api.get('/leaves/my-requests').catch(() => ({ data: [] })),
+      api.get('/regularizations/my-requests').catch(() => ({ data: [] })),
     ])
-      .then(([pRes, hRes, lRes]) => {
+      .then(([pRes, hRes, lRes, rRes]) => {
         setPunches(pRes.data.punches ?? []);
         setHolidays(hRes.data.data ?? hRes.data ?? []);
         setLeaves(lRes.data.data ?? lRes.data ?? []);
+        setRegReqs([...(rRes.data.data ?? rRes.data ?? [])].sort((a: RegReq, b: RegReq) => b.createdAt.localeCompare(a.createdAt)));
       })
       .catch(() => router.replace('/login'))
       .finally(() => setLoading(false));
@@ -164,7 +173,7 @@ export default function HistoryPage() {
   const leaveDaySet = useMemo(() => {
     const s = new Set<string>();
     leaves.filter(l => l.status === 'APPROVED').forEach(lr => {
-      const start = new Date(lr.startDate); const end = new Date(lr.endDate);
+      const start = new Date(lr.fromDate); const end = new Date(lr.toDate);
       const d = new Date(start);
       while (d <= end) { s.add(toLocalDateStr(d.toISOString())); d.setDate(d.getDate() + 1); }
     });
@@ -229,15 +238,19 @@ export default function HistoryPage() {
 
   async function submitReg() {
     if (!regForm) return;
+    if (!regForm.date) return setRegMsg('Please select a date');
+    if (!regForm.reason.trim()) return setRegMsg('Reason is required');
     setRegBusy(true); setRegMsg('');
     try {
-      await api.post('/regularizations', {
+      const res = await api.post('/regularizations', {
         date: regForm.date,
         requestType: regForm.requestType,
         punchInTime:  regForm.punchInTime  || undefined,
         punchOutTime: regForm.punchOutTime || undefined,
         reason: regForm.reason,
       });
+      const newReq: RegReq = res.data.data ?? res.data;
+      setRegReqs(prev => [newReq, ...prev]);
       setRegMsg('Request submitted!');
       setTimeout(() => { setRegForm(null); setRegMsg(''); }, 1500);
     } catch (e: any) {
@@ -245,6 +258,24 @@ export default function HistoryPage() {
     } finally {
       setRegBusy(false);
     }
+  }
+
+  async function cancelReg(id: string) {
+    if (!confirm('Cancel this correction request?')) return;
+    try {
+      await api.delete(`/regularizations/${id}`);
+      setRegReqs(prev => prev.filter(r => r.id !== id));
+    } catch (e: any) {
+      alert(e?.response?.data?.message ?? 'Cannot cancel');
+    }
+  }
+
+  function openNewReg() {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const ds = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,'0')}-${String(yesterday.getDate()).padStart(2,'0')}`;
+    setRegMsg('');
+    setRegForm({ date: ds, requestType: 'BOTH', punchInTime: '', punchOutTime: '', reason: '' });
   }
 
   return (
@@ -288,9 +319,13 @@ export default function HistoryPage() {
 
       {/* Tab toggle */}
       <div style={{ display: 'flex', gap: 4, padding: '0 16px 12px', background: '#f8fafc' }}>
-        {([['list','📋 List'],['calendar','📅 Calendar']] as const).map(([key, label]) => (
+        {([
+          ['list',        '📋 List'],
+          ['calendar',    '📅 Cal'],
+          ['corrections', `✎ Corrections${regReqs.length > 0 ? ` (${regReqs.length})` : ''}`],
+        ] as const).map(([key, label]) => (
           <button key={key} onClick={() => setViewTab(key)}
-            style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: '1.5px solid', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+            style={{ flex: 1, padding: '8px 2px', borderRadius: 10, border: '1.5px solid', fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
               background: viewTab === key ? '#1d4ed8' : '#fff',
               color: viewTab === key ? '#fff' : '#6b7280',
               borderColor: viewTab === key ? '#1d4ed8' : '#e5e7eb',
@@ -360,6 +395,69 @@ export default function HistoryPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Corrections tab */}
+      {viewTab === 'corrections' && (
+        <div style={{ padding: '0 16px 16px' }}>
+          <button onClick={openNewReg}
+            style={{ width: '100%', marginBottom: 14, padding: '12px 0', borderRadius: 12, border: '1.5px dashed #1d4ed8', background: '#eff6ff', color: '#1d4ed8', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            + Request New Correction
+          </button>
+
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+              <div style={{ width: 28, height: 28, border: '3px solid #bfdbfe', borderTop: '3px solid #1d4ed8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          ) : regReqs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '50px 20px', color: '#9ca3af' }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>✎</div>
+              <div style={{ fontWeight: 600, fontSize: 15 }}>No correction requests</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>Tap above to request an attendance correction</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {regReqs.map(r => {
+                const statusStyle = {
+                  PENDING:  { bg: '#fef9c3', color: '#92400e', label: '⏳ Pending'  },
+                  APPROVED: { bg: '#dcfce7', color: '#15803d', label: '✅ Approved' },
+                  REJECTED: { bg: '#fee2e2', color: '#b91c1c', label: '❌ Rejected' },
+                }[r.status];
+                const typeLabel = r.requestType === 'PUNCH_IN' ? 'Punch In' : r.requestType === 'PUNCH_OUT' ? 'Punch Out' : 'Both Punches';
+                const dateLabel = new Date(r.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+                return (
+                  <div key={r.id} style={{ background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>{dateLabel}</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{typeLabel}</div>
+                      </div>
+                      <span style={{ background: statusStyle.bg, color: statusStyle.color, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20, flexShrink: 0 }}>
+                        {statusStyle.label}
+                      </span>
+                    </div>
+                    {(r.punchInTime || r.punchOutTime) && (
+                      <div style={{ display: 'flex', gap: 10, marginBottom: 6 }}>
+                        {r.punchInTime  && <span style={{ fontSize: 12, color: '#15803d', background: '#f0fdf4', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>IN {r.punchInTime}</span>}
+                        {r.punchOutTime && <span style={{ fontSize: 12, color: '#b45309', background: '#fffbeb', padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>OUT {r.punchOutTime}</span>}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>"{r.reason}"</div>
+                    {r.rejectionReason && (
+                      <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>Rejected: {r.rejectionReason}</div>
+                    )}
+                    {r.status === 'PENDING' && (
+                      <button onClick={() => cancelReg(r.id)}
+                        style={{ marginTop: 10, background: 'none', border: '1px solid #e5e7eb', color: '#6b7280', fontSize: 12, padding: '5px 12px', borderRadius: 8, cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -489,8 +587,13 @@ export default function HistoryPage() {
       {regForm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100, padding: '0 0 72px' }}>
           <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '24px 20px', maxHeight: '80dvh', overflowY: 'auto' }}>
-            <div style={{ fontWeight: 700, fontSize: 17, color: '#111827', marginBottom: 4 }}>Request Attendance Correction</div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>{new Date(regForm.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })}</div>
+            <div style={{ fontWeight: 700, fontSize: 17, color: '#111827', marginBottom: 12 }}>Request Attendance Correction</div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Date</label>
+              <input type="date" value={regForm.date} max={new Date().toISOString().slice(0,10)}
+                onChange={e => setRegForm(f => f ? { ...f, date: e.target.value } : f)}
+                style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '9px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+            </div>
 
             {/* Request type */}
             <div style={{ marginBottom: 14 }}>
