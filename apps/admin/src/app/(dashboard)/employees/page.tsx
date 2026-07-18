@@ -1,8 +1,9 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { UserPlus, Search, KeyRound, X, Users, Pencil, UserCheck, UserX, Clock, ChevronRight, LogIn, LogOut as LogOutIcon, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import { UserPlus, Search, KeyRound, X, Users, Pencil, UserCheck, UserX, Clock, ChevronRight, LogIn, LogOut as LogOutIcon, CheckCircle2, AlertCircle, XCircle, CalendarDays } from 'lucide-react';
 import { formatDate, formatTime } from '@/lib/utils';
 
 type Employee = {
@@ -318,7 +319,8 @@ function ModalHeader({ title, sub, onClose, children }: { title: string; sub: st
 
 /* ─── Page ─── */
 export default function EmployeesPage() {
-  const qc = useQueryClient();
+  const qc     = useQueryClient();
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -504,6 +506,10 @@ export default function EmployeesPage() {
                         <button onClick={() => setHistoryTarget(e)}
                           className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
                           <Clock size={11} />History
+                        </button>
+                        <button onClick={() => router.push(`/employees/${e.id}/attendance`)}
+                          className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors">
+                          <CalendarDays size={11} />Attendance
                         </button>
                         <button onClick={() => setEditTarget(e)}
                           className="flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
