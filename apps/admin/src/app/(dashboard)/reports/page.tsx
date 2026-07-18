@@ -134,7 +134,7 @@ function DailyReport() {
         <div className="w-px h-6 bg-slate-200" />
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
           max={today.toISOString().slice(0, 10)}
-          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
         <button onClick={exportExcel} disabled={punches.length === 0}
           className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40 transition-colors"
           style={{ background: '#16a34a', color: '#fff' }}>
@@ -659,7 +659,7 @@ function AbsentReport() {
         <div className="w-px h-6 bg-slate-200" />
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
           max={today.toISOString().slice(0, 10)}
-          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
         <button onClick={exportExcel} disabled={absent.length === 0}
           className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40 transition-colors"
           style={{ background: '#16a34a', color: '#fff' }}>

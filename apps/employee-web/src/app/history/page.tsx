@@ -70,10 +70,31 @@ const STATUS_DOT: Record<string, string> = {
   APPROVED: '#22c55e', PENDING: '#f59e0b', REJECTED: '#ef4444',
 };
 
+type Holiday = { id: string; date: string; name: string };
+type LeaveReq = { id: string; startDate: string; endDate: string; status: string; leaveType: { name: string } };
+
 type RegForm = {
   date: string; requestType: 'PUNCH_IN' | 'PUNCH_OUT' | 'BOTH';
   punchInTime: string; punchOutTime: string; reason: string;
 };
+
+type DayStatus = 'P' | 'A' | 'HD' | 'W' | 'H' | 'L' | 'PEND' | 'FUT';
+
+const DAY_STATUS_META: Record<DayStatus, { label: string; bg: string; text: string }> = {
+  P:    { label: 'Present',   bg: '#dcfce7', text: '#15803d' },
+  A:    { label: 'Absent',    bg: '#fee2e2', text: '#b91c1c' },
+  HD:   { label: 'Half Day',  bg: '#d1fae5', text: '#065f46' },
+  W:    { label: 'Off',       bg: '#f1f5f9', text: '#64748b' },
+  H:    { label: 'Holiday',   bg: '#ede9fe', text: '#6d28d9' },
+  L:    { label: 'Leave',     bg: '#fef3c7', text: '#92400e' },
+  PEND: { label: 'Pending',   bg: '#fef9c3', text: '#b45309' },
+  FUT:  { label: '—',         bg: '#f8fafc', text: '#e2e8f0' },
+};
+
+function toLocalDateStr(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 
 export default function HistoryPage() {
   const router = useRouter();
@@ -81,8 +102,11 @@ export default function HistoryPage() {
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth()); // 0-indexed
   const [punches, setPunches] = useState<Punch[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [leaves,   setLeaves]   = useState<LeaveReq[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [viewTab, setViewTab] = useState<'list' | 'calendar'>('list');
 
   // Regularization modal
   const [regForm,   setRegForm]   = useState<RegForm | null>(null);
@@ -95,8 +119,16 @@ export default function HistoryPage() {
     const token = localStorage.getItem('accessToken');
     if (!token) { router.replace('/login'); return; }
     setLoading(true);
-    api.get('/punches/me', { params: { month: monthKey } })
-      .then(r => setPunches(r.data.punches ?? []))
+    Promise.all([
+      api.get('/punches/me', { params: { month: monthKey } }),
+      api.get('/holidays', { params: { year: String(year) } }).catch(() => ({ data: { data: [] } })),
+      api.get('/leaves/my-requests').catch(() => ({ data: [] })),
+    ])
+      .then(([pRes, hRes, lRes]) => {
+        setPunches(pRes.data.punches ?? []);
+        setHolidays(hRes.data.data ?? hRes.data ?? []);
+        setLeaves(lRes.data.data ?? lRes.data ?? []);
+      })
       .catch(() => router.replace('/login'))
       .finally(() => setLoading(false));
   }, [monthKey, router]);
@@ -121,6 +153,62 @@ export default function HistoryPage() {
     const pendingDays = days.filter(d => d.punches.some(p => p.approvalStatus === 'PENDING')).length;
     return { presentDays, totalHours, pendingDays };
   }, [days]);
+
+  // Calendar computations
+  const holidaySet = useMemo(() => {
+    const s = new Set<string>();
+    holidays.forEach(h => s.add(h.date.slice(0, 10)));
+    return s;
+  }, [holidays]);
+
+  const leaveDaySet = useMemo(() => {
+    const s = new Set<string>();
+    leaves.filter(l => l.status === 'APPROVED').forEach(lr => {
+      const start = new Date(lr.startDate); const end = new Date(lr.endDate);
+      const d = new Date(start);
+      while (d <= end) { s.add(toLocalDateStr(d.toISOString())); d.setDate(d.getDate() + 1); }
+    });
+    return s;
+  }, [leaves]);
+
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }, []);
+
+  const calDays = useMemo(() => {
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    return Array.from({ length: lastDay }, (_, i) => {
+      const day = i + 1;
+      const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const dow = new Date(year, month, day).getDay();
+
+      let status: DayStatus;
+      if (dateStr > todayStr)           status = 'FUT';
+      else if (holidaySet.has(dateStr)) status = 'H';
+      else if (leaveDaySet.has(dateStr)) status = 'L';
+      else if (dow === 0)               status = 'W';
+      else {
+        const dayPunches = punches.filter(p => toLocalDateStr(p.timestampServer) === dateStr);
+        if (dayPunches.length === 0) {
+          status = 'A';
+        } else {
+          const approved = dayPunches.filter(p => p.approvalStatus === 'APPROVED');
+          const pending  = dayPunches.filter(p => p.approvalStatus === 'PENDING');
+          if (approved.length === 0) status = pending.length > 0 ? 'PEND' : 'A';
+          else status = (approved.some(p => p.type === 'IN') && approved.some(p => p.type === 'OUT')) ? 'P' : 'HD';
+        }
+      }
+
+      const dayPunches = punches.filter(p => toLocalDateStr(p.timestampServer) === dateStr);
+      const approved   = dayPunches.filter(p => p.approvalStatus === 'APPROVED');
+      return {
+        day, dateStr, dow, status,
+        inTime:  approved.find(p => p.type === 'IN')  ? fmtTime(approved.find(p => p.type === 'IN')!.timestampServer) : null,
+        outTime: approved.find(p => p.type === 'OUT') ? fmtTime(approved.find(p => p.type === 'OUT')!.timestampServer) : null,
+      };
+    });
+  }, [year, month, punches, holidaySet, leaveDaySet, todayStr]);
 
   function toggleExpand(dateStr: string) {
     setExpanded(prev => {
@@ -198,8 +286,85 @@ export default function HistoryPage() {
         </div>
       )}
 
+      {/* Tab toggle */}
+      <div style={{ display: 'flex', gap: 4, padding: '0 16px 12px', background: '#f8fafc' }}>
+        {([['list','📋 List'],['calendar','📅 Calendar']] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setViewTab(key)}
+            style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: '1.5px solid', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+              background: viewTab === key ? '#1d4ed8' : '#fff',
+              color: viewTab === key ? '#fff' : '#6b7280',
+              borderColor: viewTab === key ? '#1d4ed8' : '#e5e7eb',
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Calendar View */}
+      {viewTab === 'calendar' && !loading && (
+        <div style={{ padding: '0 16px 16px' }}>
+          {/* DOW header */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 4 }}>
+            {['Su','Mo','Tu','We','Th','Fr','Sa'].map((d, i) => (
+              <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: i === 0 ? '#ef4444' : '#9ca3af', padding: '4px 0' }}>{d}</div>
+            ))}
+          </div>
+
+          {/* Calendar grid */}
+          {(() => {
+            const firstDOW = new Date(year, month, 1).getDay();
+            const cells: (typeof calDays[0] | null)[] = [
+              ...Array<null>(firstDOW).fill(null),
+              ...calDays,
+            ];
+            while (cells.length % 7 !== 0) cells.push(null);
+
+            return Array.from({ length: cells.length / 7 }, (_, wk) => (
+              <div key={wk} style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 2 }}>
+                {cells.slice(wk * 7, wk * 7 + 7).map((d, ci) => {
+                  if (!d) return <div key={ci} style={{ minHeight: 54, background: '#f8fafc', borderRadius: 8 }} />;
+                  const meta    = DAY_STATUS_META[d.status];
+                  const isToday = d.dateStr === todayStr;
+                  return (
+                    <div key={d.dateStr}
+                      style={{ minHeight: 54, borderRadius: 8, padding: '4px 2px', display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        background: d.status === 'FUT' ? '#f8fafc' : meta.bg, opacity: d.status === 'FUT' ? 0.4 : 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: isToday ? '#1d4ed8' : 'transparent',
+                        color: isToday ? '#fff' : d.dow === 0 ? '#ef4444' : '#111827' }}>
+                        {d.day}
+                      </div>
+                      {d.status !== 'FUT' && (
+                        <div style={{ fontSize: 9, fontWeight: 700, color: meta.text, marginTop: 1, textAlign: 'center', lineHeight: 1.1 }}>
+                          {meta.label}
+                        </div>
+                      )}
+                      {d.inTime && (
+                        <div style={{ fontSize: 8, color: '#15803d', marginTop: 1, fontWeight: 600 }}>
+                          {d.inTime.replace(' AM','a').replace(' PM','p')}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ));
+          })()}
+
+          {/* Legend */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+            {(['P','A','HD','L','H','W'] as DayStatus[]).map(s => (
+              <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: DAY_STATUS_META[s].bg, border: `1px solid ${DAY_STATUS_META[s].text}40` }} />
+                <span style={{ fontSize: 10, color: '#6b7280' }}>{DAY_STATUS_META[s].label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Day list */}
-      <div style={{ padding: '0 16px 16px' }}>
+      {viewTab === 'list' && <div style={{ padding: '0 16px 16px' }}>
         {loading ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, padding: '60px 0' }}>
             <div style={{ width: 32, height: 32, border: '3px solid #bfdbfe', borderTop: '3px solid #1d4ed8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -316,7 +481,7 @@ export default function HistoryPage() {
             })}
           </div>
         )}
-      </div>
+      </div>}
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 

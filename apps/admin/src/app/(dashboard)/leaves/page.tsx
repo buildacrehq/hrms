@@ -811,9 +811,9 @@ function BalancesTab({ leaveTypes }: { leaveTypes: LeaveType[] }) {
       <div className="flex flex-wrap items-center gap-3">
         <input value={empFilter} onChange={e => setEmpFilter(e.target.value)}
           placeholder="Search employee…"
-          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 w-52" />
+          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-52" />
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="">All leave types</option>
           {leaveTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
