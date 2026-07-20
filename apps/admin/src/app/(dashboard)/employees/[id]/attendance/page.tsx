@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Calendar, List,
-  LogIn, LogOut as LogOutIcon, Clock, AlertCircle, MapPin,
+  Clock, AlertCircle, MapPin,
   Umbrella, RefreshCw, Check, X,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -338,6 +338,34 @@ export default function EmployeeAttendancePage() {
 }
 
 /* ── Daily View ──────────────────────────────────────────────── */
+function SBox({
+  code, content, variant,
+}: {
+  code: string;
+  content: string;
+  variant: 'green' | 'green-outline' | 'amber' | 'red' | 'teal' | 'violet' | 'slate' | 'ghost';
+}) {
+  const styles: Record<string, { bg: string; border: string; codeClr: string; contentClr: string }> = {
+    'green':        { bg: '#16a34a', border: '#16a34a', codeClr: '#fff',     contentClr: '#fff'     },
+    'green-outline':{ bg: '#fff',    border: '#86efac', codeClr: '#15803d',  contentClr: '#15803d'  },
+    'amber':        { bg: '#fef9c3', border: '#fde68a', codeClr: '#92400e',  contentClr: '#78350f'  },
+    'red':          { bg: '#fee2e2', border: '#fca5a5', codeClr: '#b91c1c',  contentClr: '#991b1b'  },
+    'teal':         { bg: '#ccfbf1', border: '#5eead4', codeClr: '#0f766e',  contentClr: '#0f766e'  },
+    'violet':       { bg: '#ede9fe', border: '#c4b5fd', codeClr: '#6d28d9',  contentClr: '#5b21b6'  },
+    'slate':        { bg: '#f1f5f9', border: '#cbd5e1', codeClr: '#475569',  contentClr: '#64748b'  },
+    'ghost':        { bg: '#f8fafc', border: '#e2e8f0', codeClr: '#94a3b8',  contentClr: '#94a3b8'  },
+  };
+  const s = styles[variant];
+  return (
+    <div className="flex items-center rounded-lg overflow-hidden text-xs font-semibold"
+      style={{ border: `1.5px solid ${s.border}`, background: s.bg, minHeight: 32 }}>
+      <span className="px-2 py-1.5 shrink-0" style={{ color: s.codeClr }}>{code}</span>
+      <span className="w-px self-stretch" style={{ background: s.border }} />
+      <span className="px-2 py-1.5 flex-1 truncate" style={{ color: s.contentClr }}>{content}</span>
+    </div>
+  );
+}
+
 function DailyView({
   days, holidayNames, leaveNames,
 }: {
@@ -357,58 +385,66 @@ function DailyView({
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-slate-50 border-b border-slate-200">
-            {['Date','Day','Status','Punch In','Punch Out','Hours','Note'].map(h => (
-              <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map(d => {
-            const meta  = STATUS_META[d.status];
-            const hours = (d.punchIn && d.punchOut)
-              ? (() => {
-                  const diff = (new Date(d.punchOut.timestampServer).getTime() - new Date(d.punchIn.timestampServer).getTime()) / 3_600_000;
-                  return diff > 0 ? `${Math.floor(diff)}h ${Math.round((diff % 1) * 60)}m` : '—';
-                })()
-              : '—';
-            const note        = holidayNames[d.dateStr] || leaveNames[d.dateStr] || '';
-            const displayDate = new Date(d.dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm divide-y divide-slate-100">
+      {visible.map(d => {
+        const inTime  = d.punchIn  ? fmtTime(d.punchIn.timestampServer)  : null;
+        const outTime = d.punchOut ? fmtTime(d.punchOut.timestampServer) : null;
+        const pendInTime  = d.pendIn  ? fmtTime(d.pendIn.timestampServer)  : null;
+        const pendOutTime = d.pendOut ? fmtTime(d.pendOut.timestampServer) : null;
 
-            return (
-              <tr key={d.dateStr} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-3 font-semibold text-slate-700">{displayDate}</td>
-                <td className="px-4 py-3 text-slate-500">{DOW_SHORT[d.dow]}</td>
-                <td className="px-4 py-3">
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold"
-                    style={{ background: meta.bg, color: meta.text }}>
-                    {meta.label}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  {d.punchIn
-                    ? <span className="flex items-center gap-1.5 text-emerald-700 font-medium"><LogIn size={12} />{fmtTime(d.punchIn.timestampServer)}</span>
-                    : d.pendIn
-                      ? <span className="flex items-center gap-1.5 text-amber-600 text-xs"><Clock size={11} />{fmtTime(d.pendIn.timestampServer)} <span className="opacity-70">(pending)</span></span>
-                      : <span className="text-slate-300">—</span>}
-                </td>
-                <td className="px-4 py-3">
-                  {d.punchOut
-                    ? <span className="flex items-center gap-1.5 text-rose-600 font-medium"><LogOutIcon size={12} />{fmtTime(d.punchOut.timestampServer)}</span>
-                    : d.pendOut
-                      ? <span className="flex items-center gap-1.5 text-amber-600 text-xs"><Clock size={11} />{fmtTime(d.pendOut.timestampServer)} <span className="opacity-70">(pending)</span></span>
-                      : <span className="text-slate-300">—</span>}
-                </td>
-                <td className="px-4 py-3 text-slate-600">{hours}</td>
-                <td className="px-4 py-3 text-slate-400 text-xs italic">{note}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+        const hours = (d.punchIn && d.punchOut)
+          ? (() => {
+              const diff = (new Date(d.punchOut.timestampServer).getTime() - new Date(d.punchIn.timestampServer).getTime()) / 3_600_000;
+              return diff > 0 ? `${Math.floor(diff)}h ${Math.round((diff % 1) * 60)}m` : null;
+            })()
+          : null;
+
+        const displayDate = new Date(d.dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+
+        // P box: green if full present, green-outline if punch-in only or pending, ghost otherwise
+        let pVariant: 'green' | 'green-outline' | 'amber' | 'ghost' = 'ghost';
+        let pContent = '—';
+        if (d.status === 'P') {
+          pVariant = 'green'; pContent = `${inTime} - ${outTime ?? 'NA'}`;
+        } else if (d.status === 'HD' && inTime) {
+          pVariant = 'green-outline'; pContent = `${inTime} - NA`;
+        } else if (d.status === 'PEND' && pendInTime) {
+          pVariant = 'amber'; pContent = `${pendInTime} - ${pendOutTime ?? 'NA'}`;
+        } else if (inTime) {
+          pVariant = 'green-outline'; pContent = `${inTime} - NA`;
+        }
+
+        // Row 2 last box — whichever special status applies
+        let lastCode = 'L'; let lastContent = 'Leave'; let lastVariant: 'amber' | 'violet' | 'slate' | 'ghost' = 'ghost';
+        if (d.status === 'L')  { lastVariant = 'amber';  lastContent = leaveNames[d.dateStr] || 'Leave'; }
+        if (d.status === 'LP') { lastVariant = 'amber';  lastContent = 'Leave (Pending)'; }
+        if (d.status === 'H')  { lastVariant = 'violet'; lastCode = 'H'; lastContent = holidayNames[d.dateStr] || 'Holiday'; }
+        if (d.status === 'W')  { lastVariant = 'slate';  lastCode = 'W'; lastContent = 'Week Off'; }
+
+        return (
+          <div key={d.dateStr} className="px-5 py-4 hover:bg-slate-50/50 transition-colors">
+            <div className="flex items-start gap-5">
+              {/* Date column */}
+              <div className="shrink-0 w-24 pt-0.5">
+                <div className="text-sm font-bold text-slate-800">{displayDate} | {DOW_SHORT[d.dow]}</div>
+                <div className="text-xs text-slate-400 mt-1">{hours ? `${hours} Hrs` : '—'}</div>
+              </div>
+
+              {/* 2×3 status box grid */}
+              <div className="flex-1 grid grid-cols-3 gap-2">
+                {/* Row 1 */}
+                <SBox code="P"  content={pContent}   variant={pVariant} />
+                <SBox code="HD" content="Half Day"   variant={d.status === 'HD' ? 'teal' : 'ghost'} />
+                <SBox code="A"  content="Absent"     variant={d.status === 'A'  ? 'red'  : 'ghost'} />
+                {/* Row 2 */}
+                <SBox code="F"  content="Fine"       variant="ghost" />
+                <SBox code="OT" content="Overtime"   variant="ghost" />
+                <SBox code={lastCode} content={lastContent} variant={lastVariant} />
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
