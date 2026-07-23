@@ -103,7 +103,7 @@ export default function EmployeeAttendancePage() {
   /* ── queries ── */
   const empQ = useQuery<Employee>({
     queryKey: ['emp', id],
-    queryFn:  () => api.get(`/admin/employees/${id}`).then(r => r.data),
+    queryFn:  () => api.get(`/admin/employees/${id}`).then(r => r.data.data),
   });
   const punchQ = useQuery<{ punches: Punch[] }>({
     queryKey: ['emp-att-punches', id, startDate],
