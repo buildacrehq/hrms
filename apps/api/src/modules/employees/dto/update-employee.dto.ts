@@ -1,6 +1,6 @@
 import { IsString, IsEnum, Matches, IsOptional, IsNumber, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Gender, Role } from '@prisma/client';
+import { Gender, Role, EmpType } from '@prisma/client';
 
 export class UpdateEmployeeDto {
   @ApiPropertyOptional({ example: 'Ravi Kumar' })
@@ -34,4 +34,9 @@ export class UpdateEmployeeDto {
   @Min(0)
   @IsOptional()
   monthlySalary?: number;
+
+  @ApiPropertyOptional({ enum: EmpType })
+  @IsEnum(EmpType)
+  @IsOptional()
+  employmentType?: EmpType;
 }

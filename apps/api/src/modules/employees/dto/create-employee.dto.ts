@@ -1,6 +1,6 @@
 import { IsString, IsEnum, Matches, IsOptional, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Gender, Role } from '@prisma/client';
+import { Gender, Role, EmpType } from '@prisma/client';
 
 export class CreateEmployeeDto {
   @ApiProperty({ example: 'Ravi Kumar' })
@@ -25,6 +25,11 @@ export class CreateEmployeeDto {
   @IsString()
   @IsOptional()
   defaultSiteId?: string;
+
+  @ApiPropertyOptional({ enum: EmpType, default: EmpType.MONTHLY_REGULAR })
+  @IsEnum(EmpType)
+  @IsOptional()
+  employmentType?: EmpType;
 
   @ApiPropertyOptional({ description: 'Initial password (min 6 chars). Admin can set/reset later.', minLength: 6 })
   @IsString()

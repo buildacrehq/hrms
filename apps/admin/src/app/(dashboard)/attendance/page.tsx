@@ -11,9 +11,17 @@ type Punch = {
   employee: { id: string; name: string; phone: string };
 };
 
+type EmpType = 'MONTHLY_REGULAR' | 'DAILY_WAGE' | 'CONTRACT';
 type Employee = {
   id: string; name: string; phone: string;
+  employmentType: EmpType;
   defaultSite: { id: string; name: string } | null;
+};
+
+const EMP_TYPE_LABEL: Record<EmpType, string> = {
+  MONTHLY_REGULAR: 'Monthly Regular',
+  DAILY_WAGE:      'Daily Wage',
+  CONTRACT:        'Contract',
 };
 
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#be185d','#4338ca'];
@@ -262,63 +270,96 @@ export default function AttendancePage() {
             <p className="text-sm font-medium">No employees found</p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm divide-y divide-slate-100">
-            {filtered.map(emp => {
-              const slot   = punchMap.get(emp.id) ?? {};
-              const status = getStatus(emp.id);
-
-              const inTime  = slot.approvedIn  ? fmtTime(slot.approvedIn.timestampServer)  : null;
-              const outTime = slot.approvedOut ? fmtTime(slot.approvedOut.timestampServer) : null;
-              const pendIn  = slot.pendingIn   ? fmtTime(slot.pendingIn.timestampServer)   : null;
-              const pendOut = slot.pendingOut  ? fmtTime(slot.pendingOut.timestampServer)  : null;
-
-              // P box
-              let pVariant: 'green' | 'green-outline' | 'amber' | 'ghost' = 'ghost';
-              let pContent = '—';
-              if (status === 'P') {
-                pVariant = 'green'; pContent = `${inTime} - ${outTime ?? 'NA'}`;
-              } else if (status === 'HD' && inTime) {
-                pVariant = 'green-outline'; pContent = `${inTime} - NA`;
-              } else if (status === 'PEND' && pendIn) {
-                pVariant = 'amber'; pContent = `${pendIn} - ${pendOut ?? 'NA'}`;
-              }
-
-              // Last box (L / H / W)
-              let lastCode = 'L'; let lastContent = 'Leave'; let lastVariant: 'amber' | 'violet' | 'slate' | 'ghost' = 'ghost';
-              if (status === 'L') { lastVariant = 'amber';  lastContent = 'Leave'; }
-              if (status === 'H') { lastVariant = 'violet'; lastCode = 'H'; lastContent = 'Holiday'; }
-              if (status === 'W') { lastVariant = 'slate';  lastCode = 'W'; lastContent = 'Week Off'; }
-
-              return (
-                <Link key={emp.id} href={`/employees/${emp.id}/attendance`}
-                  className="flex items-center gap-5 px-5 py-4 hover:bg-slate-50/70 transition-colors">
-                  {/* Avatar + name */}
-                  <div className="flex items-center gap-3 w-44 shrink-0">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0"
-                      style={{ background: avatarBg(emp.name) }}>
-                      {emp.name[0]?.toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-900 truncate">{emp.name}</div>
-                      <div className="text-xs text-slate-400 truncate">{emp.defaultSite?.name ?? emp.phone}</div>
-                    </div>
-                  </div>
-
-                  {/* 2×3 status box grid */}
-                  <div className="flex-1 grid grid-cols-3 gap-2">
-                    <SBox code="P"  content={pContent}    variant={pVariant} />
-                    <SBox code="HD" content="Half Day"    variant={status === 'HD' ? 'teal'  : 'ghost'} />
-                    <SBox code="A"  content="Absent"      variant={status === 'A'  ? 'red'   : 'ghost'} />
-                    <SBox code="F"  content="Fine"        variant="ghost" />
-                    <SBox code="OT" content="Overtime"    variant="ghost" />
-                    <SBox code={lastCode} content={lastContent} variant={lastVariant} />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+          <EmpGroupedList
+            employees={filtered}
+            punchMap={punchMap}
+            getStatus={getStatus}
+          />
         )}
       </div>
     </div>
+  );
+}
+
+/* ── Grouped employee list ───────────────────────────────────── */
+type EmpPunchMap = Map<string, { approvedIn?: any; approvedOut?: any; pendingIn?: any; pendingOut?: any }>;
+type DayStatus = 'P' | 'HD' | 'A' | 'L' | 'H' | 'W' | 'PEND';
+
+function EmpGroupedList({
+  employees, punchMap, getStatus,
+}: {
+  employees: Employee[];
+  punchMap: EmpPunchMap;
+  getStatus: (id: string) => DayStatus;
+}) {
+  // Group by employmentType
+  const groups = useMemo(() => {
+    const order: EmpType[] = ['MONTHLY_REGULAR', 'DAILY_WAGE', 'CONTRACT'];
+    const map = new Map<EmpType, Employee[]>();
+    order.forEach(t => map.set(t, []));
+    employees.forEach(e => {
+      const t = (e.employmentType ?? 'MONTHLY_REGULAR') as EmpType;
+      map.get(t)?.push(e);
+    });
+    return order.filter(t => (map.get(t)?.length ?? 0) > 0).map(t => ({ type: t, emps: map.get(t)! }));
+  }, [employees]);
+
+  return (
+    <div className="space-y-4">
+      {groups.map(({ type, emps }) => (
+        <div key={type} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+          {/* Group header */}
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 bg-slate-50">
+            <span className="text-sm font-bold text-slate-700">{EMP_TYPE_LABEL[type]}</span>
+            <span className="text-xs font-semibold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{emps.length}</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {emps.map(emp => <EmpRow key={emp.id} emp={emp} slot={punchMap.get(emp.id) ?? {}} status={getStatus(emp.id)} />)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmpRow({ emp, slot, status }: { emp: Employee; slot: any; status: DayStatus }) {
+  const inTime  = slot.approvedIn  ? fmtTime(slot.approvedIn.timestampServer)  : null;
+  const outTime = slot.approvedOut ? fmtTime(slot.approvedOut.timestampServer) : null;
+  const pendIn  = slot.pendingIn   ? fmtTime(slot.pendingIn.timestampServer)   : null;
+  const pendOut = slot.pendingOut  ? fmtTime(slot.pendingOut.timestampServer)  : null;
+
+  let pVariant: 'green' | 'green-outline' | 'amber' | 'ghost' = 'ghost';
+  let pContent = '—';
+  if (status === 'P')                      { pVariant = 'green';        pContent = `${inTime} - ${outTime ?? 'NA'}`; }
+  else if (status === 'HD' && inTime)      { pVariant = 'green-outline'; pContent = `${inTime} - NA`; }
+  else if (status === 'PEND' && pendIn)    { pVariant = 'amber';         pContent = `${pendIn} - ${pendOut ?? 'NA'}`; }
+
+  let lastCode = 'L'; let lastContent = 'Leave'; let lastVariant: 'amber' | 'violet' | 'slate' | 'ghost' = 'ghost';
+  if (status === 'L') { lastVariant = 'amber';  lastContent = 'Leave'; }
+  if (status === 'H') { lastVariant = 'violet'; lastCode = 'H'; lastContent = 'Holiday'; }
+  if (status === 'W') { lastVariant = 'slate';  lastCode = 'W'; lastContent = 'Week Off'; }
+
+  return (
+    <Link href={`/employees/${emp.id}/attendance`}
+      className="flex items-center gap-5 px-5 py-3.5 hover:bg-slate-50/70 transition-colors">
+      <div className="flex items-center gap-3 w-44 shrink-0">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0"
+          style={{ background: avatarBg(emp.name) }}>
+          {emp.name[0]?.toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-slate-900 truncate">{emp.name}</div>
+          <div className="text-xs text-slate-400 truncate">{emp.defaultSite?.name ?? emp.phone}</div>
+        </div>
+      </div>
+      <div className="flex-1 grid grid-cols-3 gap-2">
+        <SBox code="P"  content={pContent}    variant={pVariant} />
+        <SBox code="HD" content="Half Day"    variant={status === 'HD' ? 'teal'  : 'ghost'} />
+        <SBox code="A"  content="Absent"      variant={status === 'A'  ? 'red'   : 'ghost'} />
+        <SBox code="F"  content="Fine"        variant="ghost" />
+        <SBox code="OT" content="Overtime"    variant="ghost" />
+        <SBox code={lastCode} content={lastContent} variant={lastVariant} />
+      </div>
+    </Link>
   );
 }

@@ -26,7 +26,8 @@ model Employee {
   // DPDP Act: timestamp when employee accepted photo/GPS data collection
   consentAt     DateTime?
   // Monthly salary in INR; null = not configured
-  monthlySalary Decimal?  @db.Decimal(10, 2)
+  monthlySalary  Decimal? @db.Decimal(10, 2)
+  employmentType EmpType  @default(MONTHLY_REGULAR)
   punches          Punch[]
   leaveRequests    LeaveRequest[]
   leaveBalances    LeaveBalance[]
@@ -289,4 +290,10 @@ enum RegType {
   PUNCH_IN
   PUNCH_OUT
   BOTH
+}
+
+enum EmpType {
+  MONTHLY_REGULAR
+  DAILY_WAGE
+  CONTRACT
 }

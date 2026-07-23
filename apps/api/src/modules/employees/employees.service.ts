@@ -69,6 +69,7 @@ export class EmployeesService {
         phone: dto.phone,
         role: dto.role ?? 'EMPLOYEE',
         defaultSiteId: dto.defaultSiteId ?? null,
+        employmentType: dto.employmentType ?? 'MONTHLY_REGULAR',
         ...(passwordHash ? { passwordHash } : {}),
       },
       include: WITH_SITE,

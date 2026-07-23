@@ -1,0 +1,5 @@
+-- CreateEnum
+CREATE TYPE "EmpType" AS ENUM ('MONTHLY_REGULAR', 'DAILY_WAGE', 'CONTRACT');
+
+-- AlterTable
+ALTER TABLE "Employee" ADD COLUMN     "employmentType" "EmpType" NOT NULL DEFAULT 'MONTHLY_REGULAR';

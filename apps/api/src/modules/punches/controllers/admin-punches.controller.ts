@@ -80,6 +80,17 @@ export class AdminPunchesController {
     return this.service.approveAllNormal(dto.date, user.sub);
   }
 
+  @Post('approve-employee/:employeeId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Approve all pending punches for a specific employee' })
+  @ApiParam({ name: 'employeeId' })
+  approveAllForEmployee(
+    @Param('employeeId') employeeId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.approveAllForEmployee(employeeId, user.sub);
+  }
+
   @Get(':id/photo-url')
   @ApiOperation({ summary: 'Get a short-lived signed URL to view a punch photo' })
   @ApiParam({ name: 'id' })

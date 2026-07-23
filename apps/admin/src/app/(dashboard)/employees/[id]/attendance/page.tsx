@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Calendar, List,
   Clock, AlertCircle, MapPin,
-  Umbrella, RefreshCw, Check, X,
+  Umbrella, RefreshCw, Check, X, Download, ExternalLink,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -126,6 +126,12 @@ export default function EmployeeAttendancePage() {
     retry: false,
   });
   const qc = useQueryClient();
+
+  const confirmApprovalMut = useMutation({
+    mutationFn: () => api.post(`/admin/punches/approve-employee/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['emp-att-punches', id, startDate] }),
+  });
+
   const approveRegMut = useMutation({
     mutationFn: (regId: string) => api.post(`/admin/regularizations/${regId}/approve`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['emp-regs', id] }),
@@ -228,6 +234,25 @@ export default function EmployeeAttendancePage() {
 
   const isLoading = empQ.isLoading || punchQ.isLoading;
 
+  async function exportReport(name: string, dayData: typeof days, label: string) {
+    const { utils, writeFile } = await import('xlsx');
+    const rows = dayData
+      .filter(d => d.status !== 'FUT')
+      .map(d => ({
+        Date: d.dateStr,
+        Status: d.status,
+        'Punch In':  d.punchIn  ? fmtTime(d.punchIn.timestampServer)  : d.pendIn  ? fmtTime(d.pendIn.timestampServer) + ' (pending)' : '',
+        'Punch Out': d.punchOut ? fmtTime(d.punchOut.timestampServer) : d.pendOut ? fmtTime(d.pendOut.timestampServer) + ' (pending)' : '',
+        Hours: (d.punchIn && d.punchOut)
+          ? (() => { const diff = (new Date(d.punchOut.timestampServer).getTime() - new Date(d.punchIn.timestampServer).getTime()) / 3_600_000; return diff > 0 ? +diff.toFixed(2) : 0; })()
+          : '',
+      }));
+    const ws = utils.json_to_sheet(rows);
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, 'Attendance');
+    writeFile(wb, `${name.replace(/\s+/g, '-')}-${label}.xlsx`);
+  }
+
   /* ─────────────────────────────────────────────────────────────── */
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -263,8 +288,8 @@ export default function EmployeeAttendancePage() {
           </div>
         </div>
 
-        {/* Month nav */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Month nav + actions */}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <button onClick={prevMonth}
             className="w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center shadow-sm">
             <ChevronLeft size={16} className="text-slate-600" />
@@ -275,6 +300,23 @@ export default function EmployeeAttendancePage() {
             className="w-9 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center shadow-sm disabled:opacity-40">
             <ChevronRight size={16} className="text-slate-600" />
           </button>
+
+          {/* Download Report */}
+          <button onClick={() => exportReport(employee?.name ?? 'Employee', days, monthLabel)}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 shadow-sm transition-colors">
+            <Download size={13} />Download Report
+          </button>
+
+          {/* Confirm Approval */}
+          {stats.pendingCount > 0 && (
+            <button
+              onClick={() => confirmApprovalMut.mutate()}
+              disabled={confirmApprovalMut.isPending}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors disabled:opacity-60">
+              <Check size={13} />
+              {confirmApprovalMut.isPending ? 'Approving…' : `Confirm Approval (${stats.pendingCount})`}
+            </button>
+          )}
         </div>
       </div>
 
@@ -325,7 +367,7 @@ export default function EmployeeAttendancePage() {
       {isLoading ? (
         <div className="bg-white rounded-2xl border border-slate-200 flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
       ) : tab === 'daily' ? (
-        <DailyView days={days} holidayNames={holidayNames} leaveNames={leaveNames} />
+        <DailyView days={days} holidayNames={holidayNames} leaveNames={leaveNames} empId={id} />
       ) : tab === 'calendar' ? (
         <CalendarView days={days} year={year} month={month} holidayNames={holidayNames} leaveNames={leaveNames} />
       ) : tab === 'leaves' ? (
@@ -367,11 +409,12 @@ function SBox({
 }
 
 function DailyView({
-  days, holidayNames, leaveNames,
+  days, holidayNames, leaveNames, empId,
 }: {
   days: DayData[];
   holidayNames: Record<string, string>;
   leaveNames: Record<string, string>;
+  empId: string;
 }) {
   const DOW_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const visible   = [...days].filter(d => d.status !== 'FUT').reverse();
@@ -431,15 +474,22 @@ function DailyView({
               </div>
 
               {/* 2×3 status box grid */}
-              <div className="flex-1 grid grid-cols-3 gap-2">
-                {/* Row 1 */}
-                <SBox code="P"  content={pContent}   variant={pVariant} />
-                <SBox code="HD" content="Half Day"   variant={d.status === 'HD' ? 'teal' : 'ghost'} />
-                <SBox code="A"  content="Absent"     variant={d.status === 'A'  ? 'red'  : 'ghost'} />
-                {/* Row 2 */}
-                <SBox code="F"  content="Fine"       variant="ghost" />
-                <SBox code="OT" content="Overtime"   variant="ghost" />
-                <SBox code={lastCode} content={lastContent} variant={lastVariant} />
+              <div className="flex-1">
+                <div className="grid grid-cols-3 gap-2">
+                  <SBox code="P"  content={pContent}   variant={pVariant} />
+                  <SBox code="HD" content="Half Day"   variant={d.status === 'HD' ? 'teal' : 'ghost'} />
+                  <SBox code="A"  content="Absent"     variant={d.status === 'A'  ? 'red'  : 'ghost'} />
+                  <SBox code="F"  content="Fine"       variant="ghost" />
+                  <SBox code="OT" content="Overtime"   variant="ghost" />
+                  <SBox code={lastCode} content={lastContent} variant={lastVariant} />
+                </div>
+                {/* Logs link */}
+                <div className="flex items-center gap-3 mt-2">
+                  <a href={`/punches?date=${d.dateStr}`}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">
+                    <ExternalLink size={10} />Logs
+                  </a>
+                </div>
               </div>
             </div>
           </div>

@@ -158,6 +158,17 @@ export class AdminPunchesService {
     return { approvedCount: normalIds.length };
   }
 
+  async approveAllForEmployee(
+    employeeId: string,
+    adminId: string,
+  ): Promise<{ approvedCount: number }> {
+    const result = await this.prisma.punch.updateMany({
+      where: { employeeId, approvalStatus: 'PENDING' },
+      data: { approvalStatus: 'APPROVED', approvedById: adminId, approvedAt: new Date() },
+    });
+    return { approvedCount: result.count };
+  }
+
   async getPhotoUrl(punchId: string): Promise<{ signedUrl: string; expiresInSeconds: number }> {
     const punch = await this.prisma.punch.findUnique({
       where: { id: punchId },
