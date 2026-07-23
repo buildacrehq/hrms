@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
@@ -7,6 +7,9 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // Warm up the API server while the user types credentials
+  useEffect(() => { api.get('/health').catch(() => {}); }, []);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

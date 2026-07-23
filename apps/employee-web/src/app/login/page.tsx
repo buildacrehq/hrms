@@ -1,5 +1,5 @@
 'use client';
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, saveTokens } from '@/lib/api';
 
@@ -9,6 +9,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Warm up the API server while the user types credentials
+  useEffect(() => { api.get('/health').catch(() => {}); }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

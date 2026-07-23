@@ -22,7 +22,7 @@ export class AdminAuthService {
     if (!admin) throw new UnauthorizedException('Admin not found');
     const valid = await bcrypt.compare(oldPassword, admin.passwordHash);
     if (!valid) throw new UnauthorizedException('Current password is incorrect');
-    const hash = await bcrypt.hash(newPassword, 12);
+    const hash = await bcrypt.hash(newPassword, 10);
     await this.prisma.admin.update({ where: { id: adminId }, data: { passwordHash: hash } });
   }
 
