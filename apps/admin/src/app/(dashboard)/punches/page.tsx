@@ -1,5 +1,6 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
@@ -135,12 +136,23 @@ function TypeBadge({ type }: { type: 'IN' | 'OUT' }) {
   );
 }
 
-export default function PunchesPage() {
-  const qc = useQueryClient();
-  const [tab, setTab]             = useState<'pending' | 'all'>('pending');
-  const [cursor, setCursor]       = useState<string | undefined>();
+export default function PunchesPageWrapper() {
+  return <Suspense><PunchesPage /></Suspense>;
+}
+
+function PunchesPage() {
+  const qc           = useQueryClient();
+  const searchParams = useSearchParams();
+  const urlDate      = searchParams.get('date') ?? '';
+
+  const [tab, setTab]               = useState<'pending' | 'all'>(urlDate ? 'all' : 'pending');
+  const [cursor, setCursor]         = useState<string | undefined>();
   const [photoModal, setPhotoModal] = useState<PhotoModal | null>(null);
-  const [allDate, setAllDate]     = useState('');
+  const [allDate, setAllDate]       = useState(urlDate);
+
+  useEffect(() => {
+    if (urlDate) { setTab('all'); setAllDate(urlDate); }
+  }, [urlDate]);
 
   const pendingQ = useQuery({
     queryKey: ['punches', 'pending'],
