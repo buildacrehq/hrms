@@ -6,10 +6,18 @@ import { api } from '@/lib/api';
 import { UserPlus, Search, KeyRound, X, Users, Pencil, UserCheck, UserX, Clock, ChevronRight, LogIn, LogOut as LogOutIcon, CheckCircle2, AlertCircle, XCircle, CalendarDays } from 'lucide-react';
 import { formatDate, formatTime } from '@/lib/utils';
 
+type EmpType = 'MONTHLY_REGULAR' | 'DAILY_WAGE' | 'CONTRACT';
+
+const EMP_TYPE_LABEL: Record<EmpType, string> = {
+  MONTHLY_REGULAR: 'Monthly Regular',
+  DAILY_WAGE: 'Daily Wage',
+  CONTRACT: 'Contract',
+};
+
 type Employee = {
   id: string; name: string; phone: string; gender: string;
   status: string; defaultSite: { id: string; name: string } | null;
-  monthlySalary: string | null;
+  monthlySalary: string | null; employmentType: EmpType;
 };
 type Site = { id: string; name: string };
 
@@ -226,6 +234,7 @@ function EditModal({ employee, sites, onClose }: { employee: Employee; sites: Si
     gender: employee.gender,
     defaultSiteId: employee.defaultSite?.id ?? '',
     monthlySalary: employee.monthlySalary ?? '',
+    employmentType: employee.employmentType,
   });
   const [error, setError] = useState('');
 
@@ -236,6 +245,7 @@ function EditModal({ employee, sites, onClose }: { employee: Employee; sites: Si
       gender: form.gender,
       defaultSiteId: form.defaultSiteId || undefined,
       monthlySalary: form.monthlySalary ? parseFloat(form.monthlySalary) : undefined,
+      employmentType: form.employmentType,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); onClose(); },
     onError: (e: any) => setError(e?.response?.data?.message ?? 'Error updating employee'),
@@ -273,6 +283,15 @@ function EditModal({ employee, sites, onClose }: { employee: Employee; sites: Si
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">No site assigned</option>
               {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Employment Type</label>
+            <select value={form.employmentType} onChange={e => setForm(f => ({ ...f, employmentType: e.target.value as EmpType }))}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              {(Object.entries(EMP_TYPE_LABEL) as [EmpType, string][]).map(([val, label]) => (
+                <option key={val} value={val}>{label}</option>
+              ))}
             </select>
           </div>
           <div className="col-span-2">
@@ -334,7 +353,7 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '' });
+  const [form, setForm] = useState({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '', employmentType: 'MONTHLY_REGULAR' as EmpType });
   const [passwordTarget, setPasswordTarget] = useState<Employee | null>(null);
   const [editTarget,     setEditTarget]     = useState<Employee | null>(null);
   const [historyTarget,  setHistoryTarget]  = useState<Employee | null>(null);
@@ -348,7 +367,7 @@ export default function EmployeesPage() {
 
   const create = useMutation({
     mutationFn: () => api.post('/admin/employees', { ...form, password: form.password || undefined }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); setShowForm(false); setForm({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '' }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); setShowForm(false); setForm({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '', employmentType: 'MONTHLY_REGULAR' }); },
   });
 
   const deactivate = useMutation({
@@ -421,6 +440,15 @@ export default function EmployeesPage() {
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select site…</option>
                   {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Employment Type</label>
+                <select value={form.employmentType} onChange={e => setForm(f => ({ ...f, employmentType: e.target.value as EmpType }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {(Object.entries(EMP_TYPE_LABEL) as [EmpType, string][]).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
                 </select>
               </div>
               <div className="col-span-2">
@@ -497,6 +525,9 @@ export default function EmployeesPage() {
                             {e.monthlySalary && (
                               <span className="ml-1 text-emerald-600 font-semibold">· ₹{parseFloat(e.monthlySalary).toLocaleString('en-IN')}/mo</span>
                             )}
+                          </div>
+                          <div className="mt-0.5">
+                            <span className="text-xs text-slate-400">{EMP_TYPE_LABEL[e.employmentType] ?? e.employmentType}</span>
                           </div>
                         </div>
                       </button>
