@@ -4,11 +4,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, ClipboardList, Users, MapPin,
-  CalendarDays, Settings, BarChart2, LogOut, Building2, Umbrella, RefreshCw,
+  CalendarDays, Settings, BarChart2, LogOut, Building2, Umbrella, RefreshCw, CalendarCheck,
 } from 'lucide-react';
 
 const nav = [
   { href: '/dashboard',        label: 'Dashboard',       icon: LayoutDashboard },
+  { href: '/attendance',       label: 'Attendance',      icon: CalendarCheck },
   { href: '/punches',          label: 'Approvals',       icon: ClipboardList },
   { href: '/regularizations',  label: 'Regularizations', icon: RefreshCw },
   { href: '/employees',        label: 'Employees',       icon: Users },
