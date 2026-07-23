@@ -121,7 +121,7 @@ export default function HomePage() {
     const monthKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     api.get('/punches/me', { params: { month: monthKey } })
       .then(r => {
-        const punches: any[] = r.data.punches ?? [];
+        const punches: any[] = r.data.data?.punches ?? [];
         const presentSet = new Set<string>();
         let pending = 0;
         punches.forEach((p: any) => {

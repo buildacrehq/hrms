@@ -172,7 +172,13 @@ function PunchesPage() {
 
   const approve    = useMutation({ mutationFn: (id: string) => api.post(`/admin/punches/${id}/approve`),        onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }) });
   const reject     = useMutation({ mutationFn: (id: string) => api.post(`/admin/punches/${id}/reject`),         onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }) });
-  const approveAll = useMutation({ mutationFn: () => api.post('/admin/punches/approve-all-normal'),             onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }) });
+  const approveAll = useMutation({
+    mutationFn: () => {
+      const date = allDate || new Date().toISOString().slice(0, 10);
+      return api.post('/admin/punches/approve-all-normal', { date });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }),
+  });
 
   function openPhoto(p: Punch) {
     setPhotoModal({ punchId: p.id, employee: p.employee.name, time: formatDateTime(p.timestampServer), type: p.type, status: p.approvalStatus });
