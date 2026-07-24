@@ -166,8 +166,6 @@ function PunchesPage() {
     queryKey: ['punches', 'all', cursor, allDate],
     queryFn: () => api.get('/admin/punches', { params: { cursor, ...(allDate ? { date: allDate } : {}) } }).then(r => r.data.data),
     enabled: tab === 'all',
-    refetchInterval: 5_000,
-    refetchIntervalInBackground: false,
   });
 
   const approve    = useMutation({ mutationFn: (id: string) => api.post(`/admin/punches/${id}/approve`),        onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }) });
