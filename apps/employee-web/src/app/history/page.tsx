@@ -590,7 +590,7 @@ export default function HistoryPage() {
             <div style={{ fontWeight: 700, fontSize: 17, color: '#111827', marginBottom: 12 }}>Request Attendance Correction</div>
             <div style={{ marginBottom: 14 }}>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Date</label>
-              <input type="date" value={regForm.date} max={new Date().toISOString().slice(0,10)}
+              <input type="date" value={regForm.date} max={toLocalDateStr()}
                 onChange={e => setRegForm(f => f ? { ...f, date: e.target.value } : f)}
                 style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '9px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
             </div>

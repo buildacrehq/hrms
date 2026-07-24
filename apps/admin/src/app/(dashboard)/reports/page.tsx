@@ -2,7 +2,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { formatDate, formatTime } from '@/lib/utils';
+import { formatDate, formatTime, localDateStr } from '@/lib/utils';
 import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, BarChart2, UserX, Phone, Clock, AlarmClock, IndianRupee } from 'lucide-react';
 
 /* ─────────────────────────────────────────────
@@ -11,7 +11,7 @@ import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, Bar
 function DailyReport() {
   const qc    = useQueryClient();
   const today = new Date();
-  const [date, setDate]           = useState(today.toISOString().slice(0, 10));
+  const [date, setDate]           = useState(localDateStr(today));
   const [rejectId, setRejectId]   = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
@@ -43,7 +43,7 @@ function DailyReport() {
   function shiftDate(days: number) {
     const d = new Date(date);
     d.setDate(d.getDate() + days);
-    setDate(d.toISOString().slice(0, 10));
+    setDate(localDateStr(d));
   }
 
   async function exportExcel() {
@@ -64,7 +64,7 @@ function DailyReport() {
   const weekday     = d.toLocaleDateString('en-IN', { weekday: 'long' });
   const longDate    = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
   const shortDate   = d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const isToday     = date === today.toISOString().slice(0, 10);
+  const isToday     = date === localDateStr(today);
 
   function PunchRow({ p, showActions }: { p: any; showActions: boolean }) {
     return (
@@ -133,7 +133,7 @@ function DailyReport() {
         </button>
         <div className="w-px h-6 bg-slate-200" />
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          max={today.toISOString().slice(0, 10)}
+          max={localDateStr(today)}
           className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
         <button onClick={exportExcel} disabled={punches.length === 0}
           className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40 transition-colors"
@@ -329,7 +329,7 @@ function MonthlyReport() {
       const to   = new Date(lr.toDate);
       const cur  = new Date(from);
       while (cur <= to) {
-        const d = cur.toISOString().slice(0, 10);
+        const d = localDateStr(cur);
         if (!m.has(lr.employee.id)) m.set(lr.employee.id, new Set());
         m.get(lr.employee.id)!.add(d);
         cur.setDate(cur.getDate() + 1);
@@ -339,12 +339,12 @@ function MonthlyReport() {
   }, [leaveQ.data]);
 
   const days = useMemo(() => Array.from({ length: lastDay }, (_, i) => i + 1), [lastDay]);
-  const today = now.toISOString().slice(0, 10);
+  const today = localDateStr(now);
 
   const punchMap: Record<string, Record<string, 'P' | 'U'>> = useMemo(() => {
     const m: Record<string, Record<string, 'P' | 'U'>> = {};
     punches.forEach((p: any) => {
-      const day   = new Date(p.timestampServer).toISOString().slice(0, 10);
+      const day   = localDateStr(new Date(p.timestampServer));
       const empId = p.employee.id;
       if (!m[empId]) m[empId] = {};
       if (!m[empId][day] || p.approvalStatus === 'APPROVED') {
@@ -581,10 +581,10 @@ function AbsentTable({ employees, dimmed = false }: { employees: any[]; dimmed?:
 
 function AbsentReport() {
   const today = new Date();
-  const [date, setDate] = useState(today.toISOString().slice(0, 10));
+  const [date, setDate] = useState(localDateStr(today));
 
   function shiftDate(days: number) {
-    const d = new Date(date); d.setDate(d.getDate() + days); setDate(d.toISOString().slice(0, 10));
+    const d = new Date(date); d.setDate(d.getDate() + days); setDate(localDateStr(d));
   }
 
   const empQ = useQuery({
@@ -623,7 +623,7 @@ function AbsentReport() {
   const onLeave    = useMemo(() => absent.filter(e => onLeaveIds.has(e.id)),  [absent, onLeaveIds]);
   const trulyAbsent = useMemo(() => absent.filter(e => !onLeaveIds.has(e.id)), [absent, onLeaveIds]);
 
-  const isToday     = date === today.toISOString().slice(0, 10);
+  const isToday     = date === localDateStr(today);
   const displayDate = new Date(date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   async function exportExcel() {
@@ -658,7 +658,7 @@ function AbsentReport() {
         </button>
         <div className="w-px h-6 bg-slate-200" />
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          max={today.toISOString().slice(0, 10)}
+          max={localDateStr(today)}
           className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
         <button onClick={exportExcel} disabled={absent.length === 0}
           className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40 transition-colors"
@@ -764,7 +764,7 @@ function OTReport() {
     const map = new Map<string, Map<string, { IN?: Date; OUT?: Date }>>();
     allPunches.forEach((p: any) => {
       const d = new Date(p.timestampServer);
-      const dateKey = d.toISOString().slice(0, 10);
+      const dateKey = localDateStr(d);
       if (!map.has(p.employee.id)) map.set(p.employee.id, new Map());
       const dayMap = map.get(p.employee.id)!;
       if (!dayMap.has(dateKey)) dayMap.set(dateKey, {});
@@ -1000,7 +1000,7 @@ function LateReport() {
     allPunches.forEach((p: any) => {
       if (p.type !== 'IN') return;
       const d = new Date(p.timestampServer);
-      const dateKey = d.toISOString().slice(0, 10);
+      const dateKey = localDateStr(d);
       const key = `${p.employee.id}_${dateKey}`;
       if (!earliest.has(key) || d < earliest.get(key)!.inTime) {
         const emp = employees.find((e: any) => e.id === p.employee.id) ?? p.employee;
@@ -1108,7 +1108,7 @@ function LateReport() {
           { label: 'Employees',         value: empSummary.length,  bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
           { label: 'Avg Delay',         value: `${avgLate}m`,      bg: '#fdf4ff', text: '#7e22ce', border: '#e9d5ff' },
           { label: 'On-Time Rate',      value: (() => {
-            const totalIn = new Set(allPunches.filter((p:any) => p.type === 'IN').map((p:any) => `${p.employee.id}_${new Date(p.timestampServer).toISOString().slice(0,10)}`)).size;
+            const totalIn = new Set(allPunches.filter((p:any) => p.type === 'IN').map((p:any) => `${p.employee.id}_${localDateStr(new Date(p.timestampServer))}`)).size;
             if (!totalIn) return '—';
             return `${Math.round(((totalIn - lateRows.length) / totalIn) * 100)}%`;
           })(), bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },

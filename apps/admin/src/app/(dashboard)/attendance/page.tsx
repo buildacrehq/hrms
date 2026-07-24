@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { ChevronLeft, ChevronRight, Search, Users } from 'lucide-react';
+import { localDateStr } from '@/lib/utils';
 import Link from 'next/link';
 
 type Punch = {
@@ -61,13 +62,13 @@ function SBox({ code, content, variant }: {
 }
 
 export default function AttendancePage() {
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = localDateStr();
   const [date, setDate] = useState(todayIso);
   const [search, setSearch] = useState('');
 
   function shiftDate(days: number) {
     const d = new Date(date); d.setDate(d.getDate() + days);
-    setDate(d.toISOString().slice(0, 10));
+    setDate(localDateStr(d));
   }
   const isToday = date === todayIso;
 

@@ -15,6 +15,10 @@ type Employee = {
   defaultSite: { id: string; name: string } | null;
 };
 
+function toLocalDateStr(d: Date = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 const GENDER_LABEL: Record<string, string> = {
   MALE: 'Male', FEMALE: 'Female', OTHER: 'Other',
 };
@@ -174,7 +178,7 @@ export default function ProfilePage() {
       const cursor = new Date(lr.fromDate);
       const end    = new Date(lr.toDate);
       while (cursor <= end) {
-        const ds = cursor.toISOString().slice(0, 10);
+        const ds = toLocalDateStr(cursor);
         if (ds >= monthStart && ds <= monthEnd) leaveDays++;
         cursor.setDate(cursor.getDate() + 1);
       }

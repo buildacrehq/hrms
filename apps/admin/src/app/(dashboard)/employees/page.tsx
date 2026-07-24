@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { UserPlus, Search, KeyRound, X, Users, Pencil, UserCheck, UserX, Clock, ChevronRight, LogIn, LogOut as LogOutIcon, CheckCircle2, AlertCircle, XCircle, CalendarDays } from 'lucide-react';
-import { formatDate, formatTime } from '@/lib/utils';
+import { formatDate, formatTime, localDateStr } from '@/lib/utils';
 
 type EmpType = 'MONTHLY_REGULAR' | 'DAILY_WAGE' | 'CONTRACT';
 
@@ -36,7 +36,7 @@ function HistoryDrawer({ employee, onClose }: { employee: Employee; onClose: () 
   const grouped = useMemo(() => {
     const map: Record<string, any[]> = {};
     punches.forEach(p => {
-      const day = new Date(p.timestampServer).toISOString().slice(0, 10);
+      const day = localDateStr(new Date(p.timestampServer));
       if (!map[day]) map[day] = [];
       map[day].push(p);
     });
@@ -56,7 +56,7 @@ function HistoryDrawer({ employee, onClose }: { employee: Employee; onClose: () 
   }, [punches]);
 
   const totalPresent = grouped.length;
-  const thisMonth    = grouped.filter(g => g.date.slice(0, 7) === new Date().toISOString().slice(0, 7)).length;
+  const thisMonth    = grouped.filter(g => g.date.slice(0, 7) === localDateStr().slice(0, 7)).length;
 
   const bg   = AVATAR_COLORS[employee.name.charCodeAt(0) % AVATAR_COLORS.length];
 
@@ -116,8 +116,8 @@ function HistoryDrawer({ employee, onClose }: { employee: Employee; onClose: () 
           ) : grouped.map(({ date, punches: dayPunches, inPunch, outPunch, hoursWorked }) => {
             const d = new Date(date);
             const dayLabel   = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
-            const isToday    = date === new Date().toISOString().slice(0, 10);
-            const isYesterday = date === new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+            const isToday    = date === localDateStr();
+            const isYesterday = date === localDateStr(new Date(Date.now() - 86400000));
             const label = isToday ? 'Today' : isYesterday ? 'Yesterday' : dayLabel;
 
             return (

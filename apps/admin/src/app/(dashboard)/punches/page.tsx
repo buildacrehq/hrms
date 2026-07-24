@@ -3,7 +3,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, localDateStr } from '@/lib/utils';
 import { Check, X, CheckCheck, Clock, MapPin, Camera, RefreshCw, Download, ZoomIn } from 'lucide-react';
 
 type Punch = {
@@ -174,7 +174,7 @@ function PunchesPage() {
   const reject     = useMutation({ mutationFn: (id: string) => api.post(`/admin/punches/${id}/reject`),         onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }) });
   const approveAll = useMutation({
     mutationFn: () => {
-      const date = allDate || new Date().toISOString().slice(0, 10);
+      const date = allDate || localDateStr();
       return api.post('/admin/punches/approve-all-normal', { date });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }),
@@ -252,7 +252,7 @@ function PunchesPage() {
           {tab === 'all' && (
             <div className="flex items-center gap-2">
               <input type="date" value={allDate} onChange={e => { setAllDate(e.target.value); setCursor(undefined); }}
-                max={new Date().toISOString().slice(0, 10)}
+                max={localDateStr()}
                 className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
               {allDate && (
                 <button onClick={() => { setAllDate(''); setCursor(undefined); }}

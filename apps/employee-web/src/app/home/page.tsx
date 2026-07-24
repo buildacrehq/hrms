@@ -11,6 +11,9 @@ type PunchStep = 'idle' | 'camera' | 'preview' | 'submitting' | 'done';
 type MonthStats = { present: number; absent: number; pending: number; workingDays: number };
 type GpsData   = { lat: number; lng: number; accuracy: number; address: string };
 
+function toLocalDateStr(d: Date = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function getInitials(name: string) {
   return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
 }
@@ -125,7 +128,7 @@ export default function HomePage() {
         const presentSet = new Set<string>();
         let pending = 0;
         punches.forEach((p: any) => {
-          const ds = new Date(p.timestampServer).toISOString().slice(0, 10);
+          const ds = toLocalDateStr(new Date(p.timestampServer));
           if (p.type === 'IN' && p.approvalStatus === 'APPROVED') presentSet.add(ds);
           if (p.approvalStatus === 'PENDING') pending++;
         });

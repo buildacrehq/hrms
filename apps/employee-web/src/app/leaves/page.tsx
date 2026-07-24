@@ -3,6 +3,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
+function toLocalDateStr(d: Date = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 type LeaveType = {
   id: string; name: string; daysEntitled: number; paid: boolean;
   approvalMode: 'AUTO' | 'MANUAL'; maxConsecutiveDays: number | null;
@@ -101,7 +105,7 @@ export default function LeavesPage() {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateStr();
 
   if (loading) {
     return (

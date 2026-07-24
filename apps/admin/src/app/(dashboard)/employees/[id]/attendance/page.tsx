@@ -510,7 +510,7 @@ function CalendarView({
 }) {
   const firstDOW    = new Date(year, month, 1).getDay();
   const DOW_HEADERS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const todayStr    = new Date().toISOString().slice(0, 10);
+  const todayStr    = localDateStr();
 
   const cells: (DayData | null)[] = [
     ...Array<null>(firstDOW).fill(null),

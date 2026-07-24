@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { formatTime } from '@/lib/utils';
+import { formatTime, localDateStr } from '@/lib/utils';
 import {
   Users, MapPin, LogIn, LogOut as LogOutIcon,
   AlertCircle, CheckCircle2, TrendingUp, Clock3, Phone,
@@ -69,7 +69,7 @@ function getGreeting() {
 }
 
 export default function DashboardPage() {
-  const today    = new Date().toISOString().slice(0, 10);
+  const today    = localDateStr();
   const dayName  = new Date().toLocaleDateString('en-IN', { weekday: 'long' });
   const fullDate = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 
