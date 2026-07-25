@@ -12,6 +12,7 @@ import { LeavesModule } from './modules/leaves/leaves.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { RegularizationsModule } from './modules/regularizations/regularizations.module';
 import { InternalModule } from './modules/internal/internal.module';
+import { DayNotesModule } from './modules/day-notes/day-notes.module';
 
 @Module({
   controllers: [HealthController],
@@ -28,6 +29,7 @@ import { InternalModule } from './modules/internal/internal.module';
     NotificationsModule,
     RegularizationsModule,
     InternalModule,
+    DayNotesModule,
   ],
 })
 export class AppModule {}

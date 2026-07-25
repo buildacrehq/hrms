@@ -1,11 +1,11 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Calendar, List,
-  Clock, AlertCircle, MapPin,
-  Umbrella, RefreshCw, Check, X, Download, ExternalLink,
+  Clock, AlertCircle, MapPin, Camera, Edit2, Check as CheckIcon, X as XIcon,
+  Umbrella, RefreshCw, Check, X, Download, ExternalLink, StickyNote,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { localDateStr } from '@/lib/utils';
@@ -15,13 +15,17 @@ type Employee = {
   id: string; name: string; phone: string; gender: string;
   status: string; defaultSite: { id: string; name: string } | null;
 };
+type TimeLog = { originalTime: string; newTime: string; reason: string | null; createdAt: string };
 type Punch = {
   id: string; type: 'IN' | 'OUT';
   timestampServer: string;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
   address: string;
+  photoKey: string | null;
   site: { name: string };
+  timeLogs: TimeLog[];
 };
+type DayNote = { date: string; note: string };
 type Holiday    = { id: string; date: string; name: string };
 type LeaveReq   = {
   id: string; fromDate: string; toDate: string; status: string;
@@ -125,6 +129,11 @@ export default function EmployeeAttendancePage() {
     queryFn:  () => api.get('/admin/regularizations', { params: { employeeId: id } })
       .then(r => r.data.data ?? r.data).catch(() => []),
     retry: false,
+  });
+  const notesQ = useQuery<DayNote[]>({
+    queryKey: ['emp-day-notes', id, startDate],
+    queryFn:  () => api.get(`/admin/employees/${id}/day-notes`, { params: { startDate, endDate } })
+      .then(r => r.data.data ?? r.data ?? []).catch(() => []),
   });
   const qc = useQueryClient();
 
@@ -368,7 +377,11 @@ export default function EmployeeAttendancePage() {
       {isLoading ? (
         <div className="bg-white rounded-2xl border border-slate-200 flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
       ) : tab === 'daily' ? (
-        <DailyView days={days} holidayNames={holidayNames} leaveNames={leaveNames} empId={id} />
+        <DailyView days={days} holidayNames={holidayNames} leaveNames={leaveNames} empId={id}
+          notes={notesQ.data ?? []}
+          onNoteChange={() => qc.invalidateQueries({ queryKey: ['emp-day-notes', id, startDate] })}
+          onPunchTimeOverride={() => qc.invalidateQueries({ queryKey: ['emp-att-punches', id, startDate] })}
+        />
       ) : tab === 'calendar' ? (
         <CalendarView days={days} year={year} month={month} holidayNames={holidayNames} leaveNames={leaveNames} />
       ) : tab === 'leaves' ? (
@@ -409,16 +422,214 @@ function SBox({
   );
 }
 
+/* ── Photo modal ─────────────────────────────────────────────── */
+function PunchPhotoModal({ punchId, label, onClose }: { punchId: string; label: string; onClose: () => void }) {
+  const urlQ = useQuery({
+    queryKey: ['photo-url', punchId],
+    queryFn: () => api.get(`/admin/punches/${punchId}/photo-url`).then(r => r.data.data.signedUrl as string),
+    staleTime: 50_000,
+  });
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}>
+      <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        style={{ maxWidth: 400, width: '100%', maxHeight: '90vh' }}
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+          <span className="font-semibold text-slate-800 text-sm">{label}</span>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center bg-slate-950" style={{ minHeight: 260 }}>
+          {urlQ.isLoading ? (
+            <div className="w-8 h-8 border-2 border-slate-600 border-t-blue-400 rounded-full animate-spin" />
+          ) : urlQ.isError ? (
+            <span className="text-slate-400 text-sm">Could not load photo</span>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={urlQ.data} alt="Selfie" className="w-full object-contain" style={{ maxHeight: 380 }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Punch time row ──────────────────────────────────────────── */
+function PunchTimeRow({ punch, label, onOverride }: {
+  punch: Punch;
+  label: 'IN' | 'OUT';
+  onOverride: (punchId: string, newTime: string, reason: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [timeVal, setTimeVal] = useState('');
+  const [reason,  setReason]  = useState('');
+  const [saving,  setSaving]  = useState(false);
+  const [photo,   setPhoto]   = useState(false);
+
+  const overridden = punch.timeLogs && punch.timeLogs.length > 0;
+  const color = label === 'IN' ? '#15803d' : '#b91c1c';
+  const bg    = label === 'IN' ? '#dcfce7' : '#fee2e2';
+
+  function startEdit() {
+    const d = new Date(punch.timestampServer);
+    setTimeVal(`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`);
+    setReason('');
+    setEditing(true);
+  }
+
+  async function save() {
+    if (!timeVal) return;
+    setSaving(true);
+    const d = new Date(punch.timestampServer);
+    const [h, m] = timeVal.split(':').map(Number);
+    d.setHours(h, m, 0, 0);
+    await onOverride(punch.id, d.toISOString(), reason);
+    setSaving(false);
+    setEditing(false);
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {/* Label badge */}
+      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: bg, color }}>{label}</span>
+
+      {editing ? (
+        <>
+          <input type="time" value={timeVal} onChange={e => setTimeVal(e.target.value)}
+            className="border border-slate-300 rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          <input type="text" placeholder="Reason (optional)" value={reason} onChange={e => setReason(e.target.value)}
+            className="border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 w-36" />
+          <button onClick={save} disabled={saving}
+            className="w-6 h-6 flex items-center justify-center rounded-md bg-emerald-500 hover:bg-emerald-600 text-white transition-colors disabled:opacity-50">
+            <CheckIcon size={12} />
+          </button>
+          <button onClick={() => setEditing(false)}
+            className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-200 hover:bg-slate-300 text-slate-600 transition-colors">
+            <XIcon size={12} />
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="text-sm font-semibold" style={{ color }}>
+            {fmtTime(punch.timestampServer)}
+          </span>
+          {overridden && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold" title={`Original: ${fmtTime(punch.timeLogs[0].originalTime)}`}>
+              Modified
+            </span>
+          )}
+          <button onClick={startEdit} title="Override time"
+            className="w-5 h-5 flex items-center justify-center rounded text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+            <Edit2 size={11} />
+          </button>
+          {label === 'IN' && punch.photoKey && (
+            <button onClick={() => setPhoto(true)} title="View selfie"
+              className="flex items-center gap-1 text-[10px] font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded transition-colors">
+              <Camera size={10} />Selfie
+            </button>
+          )}
+        </>
+      )}
+
+      {/* Override history tooltip area */}
+      {overridden && !editing && (
+        <div className="w-full mt-0.5">
+          {punch.timeLogs.map((l, i) => (
+            <div key={i} className="text-[10px] text-slate-400 flex items-center gap-1">
+              <span>Was {fmtTime(l.originalTime)} → {fmtTime(l.newTime)}</span>
+              {l.reason && <span>· {l.reason}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {photo && punch.photoKey && (
+        <PunchPhotoModal punchId={punch.id} label={`Punch ${label} Selfie`} onClose={() => setPhoto(false)} />
+      )}
+    </div>
+  );
+}
+
+/* ── Day Note field ──────────────────────────────────────────── */
+function DayNoteField({ empId, dateStr, initial, onSaved }: {
+  empId: string; dateStr: string; initial: string; onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [val,     setVal]     = useState(initial);
+  const [saving,  setSaving]  = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  async function save() {
+    setSaving(true);
+    await api.put(`/admin/employees/${empId}/day-notes/${dateStr}`, { note: val });
+    setSaving(false);
+    setEditing(false);
+    onSaved();
+  }
+
+  if (!editing && !val) {
+    return (
+      <button onClick={() => { setEditing(true); setTimeout(() => ref.current?.focus(), 50); }}
+        className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition-colors">
+        <StickyNote size={10} />Add note
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-2 mt-1">
+      <StickyNote size={11} className="text-amber-400 mt-0.5 shrink-0" />
+      {editing ? (
+        <div className="flex-1 flex flex-col gap-1">
+          <textarea ref={ref} value={val} onChange={e => setVal(e.target.value)} rows={2}
+            className="w-full border border-slate-200 rounded-lg px-2 py-1 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          <div className="flex gap-1">
+            <button onClick={save} disabled={saving}
+              className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition-colors">
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button onClick={() => { setVal(initial); setEditing(false); }}
+              className="text-xs px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => { setEditing(true); setTimeout(() => ref.current?.focus(), 50); }}
+          className="text-xs text-slate-600 hover:text-slate-800 text-left leading-snug transition-colors">
+          {val}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function DailyView({
-  days, holidayNames, leaveNames, empId,
+  days, holidayNames, leaveNames, empId, notes, onNoteChange, onPunchTimeOverride,
 }: {
   days: DayData[];
   holidayNames: Record<string, string>;
   leaveNames: Record<string, string>;
   empId: string;
+  notes: DayNote[];
+  onNoteChange: () => void;
+  onPunchTimeOverride: () => void;
 }) {
   const DOW_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const visible   = [...days].filter(d => d.status !== 'FUT').reverse();
+  const notesMap  = useMemo(() => {
+    const m: Record<string, string> = {};
+    notes.forEach(n => { m[n.date] = n.note; });
+    return m;
+  }, [notes]);
+
+  async function handleOverride(punchId: string, newTime: string, reason: string) {
+    await api.patch(`/admin/punches/${punchId}/override-time`, { newTime, reason: reason || undefined });
+    onPunchTimeOverride();
+  }
 
   if (visible.length === 0) {
     return (
@@ -445,20 +656,18 @@ function DailyView({
 
         const displayDate = new Date(d.dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 
-        // P box: green if full present, green-outline if punch-in only or pending, ghost otherwise
         let pVariant: 'green' | 'green-outline' | 'amber' | 'ghost' = 'ghost';
         let pContent = '—';
         if (d.status === 'P') {
-          pVariant = 'green'; pContent = `${inTime} - ${outTime ?? 'NA'}`;
+          pVariant = 'green'; pContent = `${inTime} – ${outTime ?? 'NA'}`;
         } else if (d.status === 'HD' && inTime) {
-          pVariant = 'green-outline'; pContent = `${inTime} - NA`;
+          pVariant = 'green-outline'; pContent = `${inTime} – NA`;
         } else if (d.status === 'PEND' && pendInTime) {
-          pVariant = 'amber'; pContent = `${pendInTime} - ${pendOutTime ?? 'NA'}`;
+          pVariant = 'amber'; pContent = `${pendInTime} – ${pendOutTime ?? 'NA'}`;
         } else if (inTime) {
-          pVariant = 'green-outline'; pContent = `${inTime} - NA`;
+          pVariant = 'green-outline'; pContent = `${inTime} – NA`;
         }
 
-        // Row 2 last box — whichever special status applies
         let lastCode = 'L'; let lastContent = 'Leave'; let lastVariant: 'amber' | 'violet' | 'slate' | 'ghost' = 'ghost';
         if (d.status === 'L')  { lastVariant = 'amber';  lastContent = leaveNames[d.dateStr] || 'Leave'; }
         if (d.status === 'LP') { lastVariant = 'amber';  lastContent = 'Leave (Pending)'; }
@@ -474,8 +683,9 @@ function DailyView({
                 <div className="text-xs text-slate-400 mt-1">{hours ? `${hours} Hrs` : '—'}</div>
               </div>
 
-              {/* 2×3 status box grid */}
-              <div className="flex-1">
+              {/* Right section */}
+              <div className="flex-1 min-w-0">
+                {/* Status boxes */}
                 <div className="grid grid-cols-3 gap-2">
                   <SBox code="P"  content={pContent}   variant={pVariant} />
                   <SBox code="HD" content="Half Day"   variant={d.status === 'HD' ? 'teal' : 'ghost'} />
@@ -484,6 +694,37 @@ function DailyView({
                   <SBox code="OT" content="Overtime"   variant="ghost" />
                   <SBox code={lastCode} content={lastContent} variant={lastVariant} />
                 </div>
+
+                {/* Punch IN / OUT detail rows */}
+                {(d.punchIn || d.punchOut || d.pendIn || d.pendOut) && (
+                  <div className="mt-3 flex flex-col gap-2 pl-1 border-l-2 border-slate-100">
+                    {(d.punchIn || d.pendIn) && (
+                      <PunchTimeRow
+                        punch={(d.punchIn ?? d.pendIn)!}
+                        label="IN"
+                        onOverride={handleOverride}
+                      />
+                    )}
+                    {(d.punchOut || d.pendOut) && (
+                      <PunchTimeRow
+                        punch={(d.punchOut ?? d.pendOut)!}
+                        label="OUT"
+                        onOverride={handleOverride}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* Admin day note */}
+                <div className="mt-2">
+                  <DayNoteField
+                    empId={empId}
+                    dateStr={d.dateStr}
+                    initial={notesMap[d.dateStr] ?? ''}
+                    onSaved={onNoteChange}
+                  />
+                </div>
+
                 {/* Logs link */}
                 <div className="flex items-center gap-3 mt-2">
                   <a href={`/punches?date=${d.dateStr}`}

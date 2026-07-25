@@ -32,6 +32,7 @@ model Employee {
   leaveRequests    LeaveRequest[]
   leaveBalances    LeaveBalance[]
   regularizations  Regularization[]
+  dayNotes         DayNote[]
   createdAt        DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -93,10 +94,39 @@ model Punch {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  timeLogs        PunchTimeLog[]
+
   @@index([employeeId, timestampServer])
   @@index([siteId, timestampServer])
   @@index([approvalStatus])
   @@index([timestampServer])
+}
+
+// Audit trail: each row records one admin override of a punch timestamp.
+model PunchTimeLog {
+  id           String   @id @default(cuid())
+  punchId      String
+  punch        Punch    @relation(fields: [punchId], references: [id])
+  originalTime DateTime
+  newTime      DateTime
+  reason       String?
+  createdAt    DateTime @default(now())
+
+  @@index([punchId])
+}
+
+// Admin note for a specific employee on a specific day (YYYY-MM-DD).
+model DayNote {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  date       String
+  note       String   @default("")
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@unique([employeeId, date])
+  @@index([employeeId])
 }
 
 // ─── Leave ────────────────────────────────────────────────────────────────────

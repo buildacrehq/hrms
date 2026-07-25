@@ -82,6 +82,7 @@ export class AdminPunchesService {
       include: {
         employee: { select: { id: true, name: true, phone: true } },
         site: { select: { name: true } },
+        timeLogs: { select: { originalTime: true, newTime: true, reason: true, createdAt: true }, orderBy: { createdAt: 'asc' } },
       },
     });
 
@@ -195,6 +196,27 @@ export class AdminPunchesService {
     return threshold;
     // Note: this comparison assumes the API server runs in the same timezone as the business (IST).
     // For multi-timezone support, store a 'timezone' setting and use a timezone-aware library.
+  }
+
+  async overrideTime(
+    punchId: string,
+    newTimeIso: string,
+    adminId: string,
+    reason?: string,
+  ) {
+    const punch = await this.prisma.punch.findUnique({ where: { id: punchId }, select: { id: true, timestampServer: true } });
+    if (!punch) throw new NotFoundException(`Punch ${punchId} not found`);
+    const newTime = new Date(newTimeIso);
+    await this.prisma.$transaction([
+      this.prisma.punchTimeLog.create({
+        data: { punchId, originalTime: punch.timestampServer, newTime, reason: reason ?? null },
+      }),
+      this.prisma.punch.update({
+        where: { id: punchId },
+        data: { timestampServer: newTime },
+      }),
+    ]);
+    return { done: true };
   }
 
   private async assertExists(punchId: string): Promise<void> {

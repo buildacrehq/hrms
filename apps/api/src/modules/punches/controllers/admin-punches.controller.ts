@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Param,
   Body,
   Query,
@@ -98,5 +99,17 @@ export class AdminPunchesController {
   @ApiParam({ name: 'id' })
   getPhotoUrl(@Param('id') id: string) {
     return this.service.getPhotoUrl(id);
+  }
+
+  @Patch(':id/override-time')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Admin override of punch timestamp — logged for audit' })
+  @ApiParam({ name: 'id' })
+  overrideTime(
+    @Param('id') id: string,
+    @Body() body: { newTime: string; reason?: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.overrideTime(id, body.newTime, user.sub, body.reason);
   }
 }
