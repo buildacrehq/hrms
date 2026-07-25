@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { UserPlus, Search, KeyRound, X, Users, Pencil, UserCheck, UserX, Clock, ChevronRight, LogIn, LogOut as LogOutIcon, CheckCircle2, AlertCircle, XCircle, CalendarDays } from 'lucide-react';
+import { UserPlus, Search, KeyRound, X, Users, Pencil, UserCheck, UserX, Clock, ChevronRight, LogIn, LogOut as LogOutIcon, CheckCircle2, AlertCircle, XCircle, CalendarDays, User } from 'lucide-react';
 import { formatDate, formatTime, localDateStr } from '@/lib/utils';
 
 type EmpType = 'MONTHLY_REGULAR' | 'DAILY_WAGE' | 'CONTRACT';
@@ -516,12 +516,12 @@ export default function EmployeesPage() {
                 {filtered.map(e => (
                   <tr key={e.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
                     <td className="px-5 py-4">
-                      <button onClick={() => setHistoryTarget(e)} className="flex items-center gap-3 group text-left w-full">
+                      <button onClick={() => router.push(`/employees/${e.id}`)} className="flex items-center gap-3 group text-left w-full">
                         <Avatar name={e.name} size={34} />
                         <div>
                           <span className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">{e.name}</span>
-                            <div className="flex items-center gap-1 text-xs text-slate-400 group-hover:text-blue-400 transition-colors mt-0.5">
-                            <Clock size={10} /><span>View history</span>
+                          <div className="flex items-center gap-1 text-xs text-slate-400 group-hover:text-blue-400 transition-colors mt-0.5">
+                            <ChevronRight size={10} /><span>View details</span>
                             {e.monthlySalary && (
                               <span className="ml-1 text-emerald-600 font-semibold">· ₹{parseFloat(e.monthlySalary).toLocaleString('en-IN')}/mo</span>
                             )}
@@ -547,9 +547,9 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <button onClick={() => setHistoryTarget(e)}
+                        <button onClick={() => router.push(`/employees/${e.id}`)}
                           className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
-                          <Clock size={11} />History
+                          <User size={11} />Details
                         </button>
                         <button onClick={() => router.push(`/employees/${e.id}/attendance`)}
                           className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors">
