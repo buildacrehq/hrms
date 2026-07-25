@@ -267,6 +267,7 @@ export default function HomePage() {
 
   const startCamera = useCallback(async () => {
     setError('');
+    startGps(); // fresh location for every punch — don't reuse stale mount reading
     capturingRef.current = false;
     setPreviewUrl(null);
     setPreviewTime(null);
@@ -663,6 +664,43 @@ export default function HomePage() {
         </Card>
       )}
 
+      {/* Location denied — visible on idle screen */}
+      {error === 'LOCATION_DENIED' && step === 'idle' && (
+        <Card style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', padding: '16px' }}>
+          <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📍</div>
+          <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>Location is OFF</div>
+          <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
+            You must enable location to punch in or out.<br />
+            Tap the 🔒 lock icon in the browser address bar → Permissions → Location → Allow.
+          </div>
+          <button onClick={startGps}
+            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+            Retry Location
+          </button>
+        </Card>
+      )}
+
+      {/* Location approximate or error — visible on idle screen */}
+      {(error === 'LOCATION_APPROXIMATE' || error === 'LOCATION_TIMEOUT' || error === 'LOCATION_ERROR') && step === 'idle' && (
+        <Card style={{ background: '#fffbeb', border: '1.5px solid #fde68a', padding: '16px' }}>
+          <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📍</div>
+          <div style={{ fontWeight: 700, color: '#b45309', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>
+            {error === 'LOCATION_APPROXIMATE' ? 'Approximate Location Detected' : 'Location Unavailable'}
+          </div>
+          <div style={{ color: '#78350f', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
+            {error === 'LOCATION_APPROXIMATE'
+              ? 'Your device is using approximate location. Go to Settings → Privacy → Location → select Precise location, then tap Retry.'
+              : error === 'LOCATION_TIMEOUT'
+              ? 'Location timed out. Move to an open area with clear sky and tap Retry.'
+              : 'Cannot get your location. Please check location settings and tap Retry.'}
+          </div>
+          <button onClick={startGps}
+            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#d97706', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+            Retry Location
+          </button>
+        </Card>
+      )}
+
       {/* Camera denied */}
       {error === 'CAMERA_DENIED' && (
         <Card style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', padding: '16px' }}>
@@ -721,8 +759,10 @@ export default function HomePage() {
                 </>
               )}
             </button>
-            <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 6, marginBottom: 0 }}>
-              {!gpsReady ? 'Waiting for precise location…' : faceRequired ? 'Selfie + GPS required' : 'GPS required'}
+            <p style={{ textAlign: 'center', fontSize: 12, color: error === 'LOCATION_DENIED' ? '#dc2626' : '#9ca3af', marginTop: 6, marginBottom: 0 }}>
+              {error === 'LOCATION_DENIED' ? '📍 Turn ON location to punch' :
+               error === 'LOCATION_APPROXIMATE' ? '📍 Precise location required' :
+               !gpsReady ? 'Waiting for precise location…' : faceRequired ? 'Selfie + GPS required' : 'GPS required'}
             </p>
           </div>
         );

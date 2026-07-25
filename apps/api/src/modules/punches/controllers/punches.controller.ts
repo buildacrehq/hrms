@@ -4,10 +4,13 @@ import {
   Get,
   Body,
   Query,
+  Req,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Request } from 'express';
+import { parseDevice } from '../../../common/utils/device.util';
 import {
   ApiTags,
   ApiOperation,
@@ -43,8 +46,11 @@ export class PunchesController {
 
   @Post()
   @ApiOperation({ summary: 'Record a punch-in or punch-out (status starts PENDING)' })
-  create(@CurrentUser() user: JwtPayload, @Body() dto: CreatePunchDto) {
-    return this.service.create(user.sub, dto);
+  create(@CurrentUser() user: JwtPayload, @Body() dto: CreatePunchDto, @Req() req: Request) {
+    const ua  = (req.headers['user-agent'] ?? '') as string;
+    const ip  = (req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? '') as string;
+    const device = parseDevice(ua, ip);
+    return this.service.create(user.sub, dto, device);
   }
 
   @Get('my/last')

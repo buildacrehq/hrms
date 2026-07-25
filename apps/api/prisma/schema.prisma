@@ -91,6 +91,10 @@ model Punch {
   rejectionReason String?
   // true when punch was captured offline and synced later
   syncedOffline   Boolean        @default(false)
+  // Device info captured at punch time for fraud detection
+  deviceBrowser   String?
+  deviceOs        String?
+  ipAddress       String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 

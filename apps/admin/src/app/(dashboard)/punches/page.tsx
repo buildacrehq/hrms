@@ -17,6 +17,9 @@ type Punch = {
   photoKey: string | null;
   employee: { name: string; phone: string };
   site: { name: string } | null;
+  deviceBrowser: string | null;
+  deviceOs: string | null;
+  ipAddress: string | null;
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -305,7 +308,7 @@ function PunchesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
-                    {['Employee', 'Type', 'Date & Time', 'Location', 'Accuracy', 'Photo', 'Status', ''].map(h => (
+                    {['Employee', 'Type', 'Date & Time', 'Location', 'Accuracy', 'Device', 'Photo', 'Status', ''].map(h => (
                       <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -340,6 +343,15 @@ function PunchesPage() {
                       </td>
                       <td className="px-5 py-4 text-xs text-slate-500 whitespace-nowrap">
                         {p.accuracy != null ? `±${Math.round(p.accuracy)}m` : '—'}
+                      </td>
+                      <td className="px-5 py-4">
+                        {(p.deviceBrowser || p.deviceOs) ? (
+                          <div title={p.ipAddress ?? undefined} className="cursor-default">
+                            <div className="text-xs font-medium text-slate-700">{p.deviceBrowser ?? '—'}</div>
+                            <div className="text-[10px] text-slate-400">{p.deviceOs ?? ''}</div>
+                            {p.ipAddress && <div className="text-[10px] text-slate-300 font-mono">{p.ipAddress}</div>}
+                          </div>
+                        ) : <span className="text-slate-300 text-xs">—</span>}
                       </td>
                       <td className="px-5 py-4">
                         {p.photoKey ? (

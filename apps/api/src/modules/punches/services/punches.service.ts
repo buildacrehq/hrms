@@ -5,6 +5,7 @@ import { StorageService } from '../../storage/storage.service';
 import { SettingsService } from '../../settings/settings.service';
 import { CreatePunchDto } from '../dto/create-punch.dto';
 import { PunchType } from '@prisma/client';
+import { DeviceInfo } from '../../../common/utils/device.util';
 
 const PAGE_SIZE = 30;
 
@@ -28,7 +29,7 @@ export class PunchesService {
     return { uploadUrl, uploadToken, photoKey };
   }
 
-  async create(employeeId: string, dto: CreatePunchDto) {
+  async create(employeeId: string, dto: CreatePunchDto, device?: DeviceInfo) {
     const siteId = await this.getDefaultSite(employeeId);
 
     const requirePhoto = await this.settings.getBoolean('require_photo', true);
@@ -40,7 +41,6 @@ export class PunchesService {
           'Photo is required. Enable "allow punch on camera fail" in Settings to allow unverified punches.',
         );
       }
-      // photoKey is empty — punch is created but flagged (approvalStatus stays PENDING with no photo)
     }
 
     return this.prisma.punch.create({
@@ -55,6 +55,9 @@ export class PunchesService {
         address: dto.address ?? '',
         photoKey: dto.photoKey ?? '',
         syncedOffline: dto.syncedOffline ?? false,
+        deviceBrowser: device?.deviceBrowser ?? null,
+        deviceOs:      device?.deviceOs      ?? null,
+        ipAddress:     device?.ipAddress     ?? null,
       },
       include: {
         site: { select: { name: true } },

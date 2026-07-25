@@ -24,6 +24,9 @@ type Punch = {
   photoKey: string | null;
   site: { name: string };
   timeLogs: TimeLog[];
+  deviceBrowser: string | null;
+  deviceOs: string | null;
+  ipAddress: string | null;
 };
 type DayNote = { date: string; note: string };
 type Holiday    = { id: string; date: string; name: string };
@@ -543,6 +546,14 @@ function PunchTimeRow({ punch, label, onOverride }: {
               {l.reason && <span>· {l.reason}</span>}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Device info */}
+      {(punch.deviceBrowser || punch.deviceOs) && !editing && (
+        <div className="w-full mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-slate-400">{punch.deviceBrowser}{punch.deviceOs ? ` · ${punch.deviceOs}` : ''}</span>
+          {punch.ipAddress && <span className="text-[10px] text-slate-300 font-mono">{punch.ipAddress}</span>}
         </div>
       )}
 
