@@ -596,13 +596,7 @@ export default function HomePage() {
               <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>📍 {employee.defaultSite.name}</div>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Avatar name={employee?.name ?? ''} />
-            <button onClick={() => { clearTokens(); router.replace('/login'); }}
-              style={{ background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
-              Logout
-            </button>
-          </div>
+          <Avatar name={employee?.name ?? ''} />
         </div>
       </div>
 
