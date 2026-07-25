@@ -420,7 +420,12 @@ export default function HomePage() {
             </span>
           ) : error ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-              <span style={{ fontSize: 13, color: '#dc2626', flex: 1 }}>{error}</span>
+              <span style={{ fontSize: 13, color: error === 'LOCATION_APPROXIMATE' ? '#d97706' : '#dc2626', flex: 1 }}>
+                {error === 'LOCATION_DENIED' ? 'Location denied — allow in browser settings' :
+                 error === 'LOCATION_APPROXIMATE' ? 'Approximate location — select Precise and retry' :
+                 error === 'LOCATION_TIMEOUT' ? 'Location timed out — move to open area' :
+                 'Cannot get location'}
+              </span>
               <button onClick={startGps} style={{ background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: 8, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 Retry
               </button>
@@ -536,7 +541,7 @@ export default function HomePage() {
 
   // ── Main home screen ──
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', paddingBottom: 160 }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', paddingBottom: 140 }}>
 
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1d4ed8, #1e40af)', padding: '48px 20px 22px', color: '#fff' }}>
@@ -615,77 +620,6 @@ export default function HomePage() {
           </div>
         </Card>
       )}
-
-      {/* GPS status card — always visible */}
-      {step === 'idle' && (() => {
-        const locErr = ['LOCATION_DENIED','LOCATION_APPROXIMATE','LOCATION_TIMEOUT','LOCATION_ERROR'].includes(error);
-        return (
-          <Card style={{ padding: '14px 16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {/* Icon */}
-              {gpsLoading ? (
-                <Spinner size={18} />
-              ) : gpsData ? (
-                <span style={{ fontSize: 18, lineHeight: 1 }}>📍</span>
-              ) : (
-                <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
-              )}
-
-              {/* Text */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {gpsLoading && (
-                  <span style={{ fontSize: 13, color: '#6b7280' }}>Getting your location…</span>
-                )}
-                {gpsData && (
-                  <>
-                    <div style={{ fontSize: 13, color: '#111827', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {gpsData.address}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>
-                      Precise · ±{Math.round(gpsData.accuracy)}m accuracy
-                    </div>
-                  </>
-                )}
-                {!gpsLoading && !gpsData && error === 'LOCATION_DENIED' && (
-                  <div style={{ fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
-                    Location access denied
-                    <div style={{ fontSize: 11, fontWeight: 400, color: '#7f1d1d', marginTop: 2 }}>
-                      Tap 🔒 in address bar → Permissions → Location → Allow
-                    </div>
-                  </div>
-                )}
-                {!gpsLoading && !gpsData && error === 'LOCATION_APPROXIMATE' && (
-                  <div style={{ fontSize: 13, color: '#d97706', fontWeight: 600 }}>
-                    Approximate location detected
-                    <div style={{ fontSize: 11, fontWeight: 400, color: '#92400e', marginTop: 2 }}>
-                      Select "Precise" when prompted, then tap retry
-                    </div>
-                  </div>
-                )}
-                {!gpsLoading && !gpsData && (error === 'LOCATION_TIMEOUT' || error === 'LOCATION_ERROR') && (
-                  <div style={{ fontSize: 13, color: '#dc2626' }}>
-                    {error === 'LOCATION_TIMEOUT' ? 'Location timed out — move to open area' : 'Cannot get location — check GPS settings'}
-                  </div>
-                )}
-              </div>
-
-              {/* Reload button */}
-              {(locErr || gpsData) && (
-                <button onClick={startGps} title="Refresh location"
-                  style={{
-                    background: gpsData ? '#f0fdf4' : '#fef2f2',
-                    border: `1.5px solid ${gpsData ? '#86efac' : '#fca5a5'}`,
-                    borderRadius: 10, width: 36, height: 36,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', flexShrink: 0, fontSize: 16,
-                  }}>
-                  🔄
-                </button>
-              )}
-            </div>
-          </Card>
-        );
-      })()}
 
       {/* Camera denied */}
       {error === 'CAMERA_DENIED' && (
