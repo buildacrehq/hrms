@@ -23,11 +23,52 @@ function formatTime(d: Date) {
 function formatDate(d: Date) {
   return d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 }
-function getGreeting() {
+function getTimeOfDay() {
   const h = new Date().getHours();
-  if (h < 12) return 'morning';
-  if (h < 17) return 'afternoon';
-  return 'evening';
+  if (h < 12) return 'Morning';
+  if (h < 17) return 'Afternoon';
+  return 'Evening';
+}
+
+const DAILY_WISHES = [
+  'Hello {Name}, top of the {Time}! Ready to make it the best? 🚀',
+  'Hey {Name}, warm {Time} greetings! Great to see you. 😊',
+  '{Time} check, {Name}! Coffee strong, focus sharp. ☕',
+  'Hello {Name}, awesome {Time}! Let\'s conquer the checklist. ✅',
+  'Happy {Time}, {Name}! Sending high energy your way. ⚡',
+  'Good {Time}, {Name}! Time to work your magic. ✨',
+  'Hey {Name}, great {Time}! Let\'s turn goals into wins today. 🎯',
+  'Hello {Name}, pleasant {Time}! Hope your shift runs smoothly. 🌿',
+  '{Time} vibes, {Name}! Let\'s crush those targets. 💪',
+  'Hey {Name}, cheerful {Time}! Ready to shine today? 🙌',
+  'Good {Time}, {Name}! Fresh start, let\'s roll. 🌊',
+  'Hello {Name}, lovely {Time}! Time to bring your best. 🔥',
+  'Hey {Name}, fantastic {Time}! Wishing you effortless progress today. 📈',
+  '{Time} alert, {Name}! Let\'s make this session count. 📊',
+  'Good {Time}, {Name}! One win at a time. 🏆',
+  'Hello {Name}, inspiring {Time}! Let\'s create big things. 💡',
+  'Hey {Name}, productive {Time}! Let\'s get down to business. 👊',
+  'Good {Time}, {Name}! May your workflow be fast and light. ⚡',
+  'Hello {Name}, smooth {Time} ahead! You\'ve got this handled. 🛡️',
+  'Hey {Name}, vibrant {Time}! Hope you\'re feeling locked in. 🔐',
+  '{Time} greetings, {Name}! Small steps lead to big results. 🐾',
+  'Hello {Name}, bright {Time}! Ready to show off your skills? 🎨',
+  'Hey {Name}, welcome to this {Time} shift! Glad you\'re here. 🤝',
+  'Good {Time}, {Name}! Let\'s keep the momentum going. 🎢',
+  'Hello {Name}, calm {Time}! Stay steady and focused. 🧘',
+  'Hey {Name}, power {Time}! Let\'s make every minute count. ⏱️',
+  'Good {Time}, {Name}! Positive vibes for your workday ahead. 🌟',
+  'Hello {Name}, quick {Time} check-in! Let\'s smash today\'s goals. 📝',
+  'Hey {Name}, golden {Time}! Hope your day runs like clockwork. ⚙️',
+  'Good {Time}, {Name}! Time to turn caffeine into results. 💻',
+  'Hello {Name}, peaceful {Time}! Finish strong and own the day. 🏁',
+];
+
+function getDailyWish(name: string): string {
+  const day = new Date().getDate(); // 1–31
+  const time = getTimeOfDay();
+  const tpl  = DAILY_WISHES[(day - 1) % DAILY_WISHES.length];
+  return tpl.replace(/\{Name\}/g, name).replace(/\{Time\}/g, time);
 }
 function isToday(isoStr: string) {
   const d = new Date(isoStr), t = new Date();
@@ -546,11 +587,12 @@ export default function HomePage() {
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1d4ed8, #1e40af)', padding: '48px 20px 22px', color: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <div style={{ fontSize: 13, opacity: 0.8 }}>Good {getGreeting()},</div>
-            <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2 }}>{employee?.name ?? '…'}</div>
+          <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>
+              {employee ? getDailyWish(employee.name) : `Good ${getTimeOfDay()}! 👋`}
+            </div>
             {employee?.defaultSite && (
-              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 3 }}>📍 {employee.defaultSite.name}</div>
+              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>📍 {employee.defaultSite.name}</div>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
