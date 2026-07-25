@@ -145,37 +145,38 @@ function PunchesPage() {
   const searchParams = useSearchParams();
   const urlDate      = searchParams.get('date') ?? '';
 
+  const today     = localDateStr();
+  const yesterday = localDateStr(new Date(Date.now() - 86400000));
+
   const [tab, setTab]               = useState<'pending' | 'all'>(urlDate ? 'all' : 'pending');
   const [cursor, setCursor]         = useState<string | undefined>();
   const [photoModal, setPhotoModal] = useState<PhotoModal | null>(null);
-  const [allDate, setAllDate]       = useState(urlDate);
-  const [pendingDate, setPendingDate] = useState(localDateStr());
+  const [selectedDate, setSelectedDate] = useState(urlDate || today);
 
   useEffect(() => {
-    if (urlDate) { setTab('all'); setAllDate(urlDate); }
+    if (urlDate) { setTab('all'); setSelectedDate(urlDate); }
   }, [urlDate]);
 
+  function changeDate(d: string) { setSelectedDate(d); setCursor(undefined); }
+
   const pendingQ = useQuery({
-    queryKey: ['punches', 'pending', pendingDate],
-    queryFn: () => api.get('/admin/punches/pending', { params: { date: pendingDate } }).then(r => r.data.data),
+    queryKey: ['punches', 'pending', selectedDate],
+    queryFn: () => api.get('/admin/punches/pending', { params: { date: selectedDate } }).then(r => r.data.data),
     enabled: tab === 'pending',
     refetchInterval: 5_000,
     refetchIntervalInBackground: false,
   });
 
   const allQ = useQuery({
-    queryKey: ['punches', 'all', cursor, allDate],
-    queryFn: () => api.get('/admin/punches', { params: { cursor, ...(allDate ? { date: allDate } : {}) } }).then(r => r.data.data),
+    queryKey: ['punches', 'all', cursor, selectedDate],
+    queryFn: () => api.get('/admin/punches', { params: { cursor, date: selectedDate } }).then(r => r.data.data),
     enabled: tab === 'all',
   });
 
   const approve    = useMutation({ mutationFn: (id: string) => api.post(`/admin/punches/${id}/approve`),        onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }) });
   const reject     = useMutation({ mutationFn: (id: string) => api.post(`/admin/punches/${id}/reject`),         onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }) });
   const approveAll = useMutation({
-    mutationFn: () => {
-      const date = allDate || localDateStr();
-      return api.post('/admin/punches/approve-all-normal', { date });
-    },
+    mutationFn: () => api.post('/admin/punches/approve-all-normal', { date: selectedDate }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['punches'] }),
   });
 
@@ -230,8 +231,30 @@ function PunchesPage() {
       </div>
 
       <div className="px-8 py-6">
-        {/* Tabs + All-tab date filter */}
-        <div className="flex items-center gap-4 mb-6">
+        {/* Date nav + tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          {/* Today / Yesterday / picker */}
+          <div className="flex items-center gap-2">
+            {[{ label: 'Today', val: today }, { label: 'Yesterday', val: yesterday }].map(({ label, val }) => (
+              <button key={val} onClick={() => changeDate(val)}
+                className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                style={{
+                  background: selectedDate === val ? '#1d4ed8' : '#f1f5f9',
+                  color: selectedDate === val ? '#fff' : '#475569',
+                }}>
+                {label}
+              </button>
+            ))}
+            <input
+              type="date"
+              value={selectedDate}
+              max={today}
+              onChange={e => changeDate(e.target.value)}
+              className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Tabs */}
           <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
             {(['pending', 'all'] as const).map(t => (
               <button key={t} onClick={() => setTab(t)}
@@ -240,40 +263,13 @@ function PunchesPage() {
                   background: tab === t ? '#fff' : 'transparent',
                   color: tab === t ? '#0f172a' : '#64748b',
                   boxShadow: tab === t ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                }}
-              >
+                }}>
                 {t === 'pending'
                   ? `Pending${pendingQ.data ? ` (${pendingCount})` : ''}`
                   : 'All Punches'}
               </button>
             ))}
           </div>
-          {tab === 'pending' && (
-            <div className="flex items-center gap-2">
-              <input type="date" value={pendingDate} onChange={e => setPendingDate(e.target.value)}
-                max={localDateStr()}
-                className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-              {pendingDate !== localDateStr() && (
-                <button onClick={() => setPendingDate(localDateStr())}
-                  className="text-xs text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl transition-colors">
-                  Today
-                </button>
-              )}
-            </div>
-          )}
-          {tab === 'all' && (
-            <div className="flex items-center gap-2">
-              <input type="date" value={allDate} onChange={e => { setAllDate(e.target.value); setCursor(undefined); }}
-                max={localDateStr()}
-                className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-              {allDate && (
-                <button onClick={() => { setAllDate(''); setCursor(undefined); }}
-                  className="text-xs text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl transition-colors">
-                  Clear
-                </button>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Table */}
