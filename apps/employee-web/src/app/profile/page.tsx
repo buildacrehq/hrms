@@ -117,7 +117,7 @@ export default function ProfilePage() {
         api.get('/holidays', { params: { year: String(y) } }),
       ]);
       setPsData({
-        punches:  pRes.data.punches ?? [],
+        punches:  pRes.data.data?.punches ?? [],
         leaves:   lRes.data.data ?? lRes.data ?? [],
         holidays: hRes.data.data ?? hRes.data ?? [],
       });

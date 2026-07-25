@@ -133,7 +133,7 @@ export default function HistoryPage() {
       api.get('/regularizations/my-requests').catch(() => ({ data: [] })),
     ])
       .then(([pRes, hRes, lRes, rRes]) => {
-        setPunches(pRes.data.punches ?? []);
+        setPunches(pRes.data.data?.punches ?? []);
         setHolidays(hRes.data.data ?? hRes.data ?? []);
         setLeaves(lRes.data.data ?? lRes.data ?? []);
         setRegReqs([...(rRes.data.data ?? rRes.data ?? [])].sort((a: RegReq, b: RegReq) => b.createdAt.localeCompare(a.createdAt)));

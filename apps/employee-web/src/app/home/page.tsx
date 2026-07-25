@@ -185,6 +185,7 @@ export default function HomePage() {
   const startGps = useCallback(() => {
     setGpsData(null);
     setGpsLoading(true);
+    setError('');
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const address = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
@@ -198,12 +199,15 @@ export default function HomePage() {
         setGpsLoading(false);
         gpsResolve.current?.(null);
         gpsResolve.current = null;
-        const denied = err.code === 1;
-        setError(denied
-          ? '📍 Location access required. Go to Settings → Site Permissions → Location → Allow.'
-          : 'Could not get location. Make sure GPS is on and try again.');
+        if (err.code === 1) {
+          setError('LOCATION_DENIED');
+        } else if (err.code === 3) {
+          setError('📍 Location timed out. Move to an open area and tap Retry.');
+        } else {
+          setError('📍 Could not get location. Make sure GPS is enabled and tap Retry.');
+        }
       },
-      { enableHighAccuracy: true, timeout: 15000 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
   }, []);
 
@@ -226,13 +230,14 @@ export default function HomePage() {
         await videoRef.current.play().catch(() => {});
       }
     } catch (err: any) {
+      stopCamera();
       const denied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
       setError(denied
-        ? '📷 Camera access required. Go to Settings → Site Permissions → Camera → Allow.'
-        : 'Camera not available. Please check your device.');
+        ? 'CAMERA_DENIED'
+        : '📷 Camera not available. Please check your device.');
       setStep('idle');
     }
-  }, [startGps]);
+  }, [startGps, stopCamera]);
 
   const capture = useCallback(() => {
     if (capturingRef.current) return;
@@ -271,18 +276,19 @@ export default function HomePage() {
 
   const submitPunch = useCallback(async () => {
     if (submitting) return;
-    setSubmitting(true);
-    setError('');
 
     // Wait for GPS if still loading
     let gps = gpsData;
     if (!gps && gpsLoading) {
+      setSubmitting(true);
       gps = await new Promise<GpsData | null>(resolve => { gpsResolve.current = resolve; });
     }
     if (!gps) {
-      setSubmitting(false);
-      return; // error already set by GPS handler
+      setError('📍 Location is required to punch. Please enable location and tap Retry.');
+      return;
     }
+    setSubmitting(true);
+    setError('');
 
     // Upload photo from previewUrl (canvasRef points to new blank canvas after step change)
     let photoKey = '';
@@ -338,6 +344,29 @@ export default function HomePage() {
     </div>
   );
 
+  // ── Location denied — blocking screen ──
+  if (step === 'camera' && error === 'LOCATION_DENIED') return (
+    <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+      <div style={{ fontSize: 56, marginBottom: 16 }}>📍</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: '#111827', marginBottom: 10 }}>Location Required</div>
+      <div style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6, marginBottom: 28 }}>
+        Location access is required to punch in or out. Your attendance cannot be recorded without it.
+        <br /><br />
+        <strong>How to enable:</strong><br />
+        Tap the 🔒 lock icon in your browser address bar → Permissions → Location → Allow
+      </div>
+      <button onClick={startGps}
+        style={{ width: '100%', padding: '16px', borderRadius: 14, border: 'none', background: '#1d4ed8', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
+        Try Again
+      </button>
+      <button onClick={cancel}
+        style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 14, cursor: 'pointer' }}>
+        Cancel
+      </button>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
   // ── Camera overlay (fullscreen) ──
   if (step === 'camera') return (
     <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 200, display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto' }}>
@@ -371,17 +400,22 @@ export default function HomePage() {
       {/* Bottom sheet */}
       <div style={{ background: '#fff', borderRadius: '24px 24px 0 0', padding: '16px 24px 32px' }}>
         {/* GPS address */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, minHeight: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, minHeight: 28 }}>
           <span style={{ fontSize: 16 }}>📍</span>
           {gpsLoading ? (
             <span style={{ fontSize: 13, color: '#9ca3af' }}>Getting location…</span>
           ) : gpsData ? (
-            <span style={{ fontSize: 13, color: '#374151', fontWeight: 500, lineHeight: 1.4 }} className="line-clamp-2">
+            <span style={{ fontSize: 13, color: '#374151', fontWeight: 500, lineHeight: 1.4 }}>
               {gpsData.address}
             </span>
-          ) : (
-            <span style={{ fontSize: 13, color: '#f59e0b' }}>Location unavailable</span>
-          )}
+          ) : error ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+              <span style={{ fontSize: 13, color: '#dc2626', flex: 1 }}>{error}</span>
+              <button onClick={startGps} style={{ background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: 8, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                Retry
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {/* Controls row */}
@@ -391,16 +425,19 @@ export default function HomePage() {
             Cancel
           </button>
 
-          {/* Shutter */}
+          {/* Shutter — blocked if face missing OR location not yet obtained */}
           {(() => {
-            const blocked = faceRequired && faceInFrame === false;
+            const noFace = faceRequired && faceInFrame === false;
+            const noGps  = !gpsData && !gpsLoading;
+            const blocked = noFace || noGps;
+            const title   = noGps ? 'Waiting for location…' : noFace ? 'Look at the camera' : '';
             return (
-              <button onClick={capture} disabled={blocked}
+              <button onClick={capture} disabled={blocked} title={title}
                 style={{
                   width: 72, height: 72, borderRadius: '50%',
-                  background: blocked ? '#fca5a5' : '#1d4ed8',
-                  border: `4px solid ${blocked ? '#fca5a5' : '#fff'}`,
-                  boxShadow: `0 0 0 3px ${blocked ? 'rgba(239,68,68,0.3)' : '#1d4ed8'}`,
+                  background: blocked ? '#d1d5db' : '#1d4ed8',
+                  border: `4px solid ${blocked ? '#d1d5db' : '#fff'}`,
+                  boxShadow: `0 0 0 3px ${blocked ? 'rgba(107,114,128,0.3)' : '#1d4ed8'}`,
                   cursor: blocked ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s',
                 }}
@@ -410,6 +447,14 @@ export default function HomePage() {
 
           <div style={{ width: 60 }} />
         </div>
+
+        {/* Hint below shutter */}
+        {!gpsData && !gpsLoading && !error && (
+          <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 10 }}>Waiting for location to enable shutter…</p>
+        )}
+        {gpsLoading && (
+          <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 10 }}>Getting location, shutter will unlock shortly…</p>
+        )}
       </div>
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -435,23 +480,26 @@ export default function HomePage() {
         </div>
 
         {/* Address */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 16 }}>
           <span style={{ fontSize: 14, marginTop: 1 }}>📍</span>
           {gpsLoading ? (
             <span style={{ fontSize: 13, color: '#9ca3af' }}>Getting location…</span>
           ) : gpsData ? (
             <span style={{ fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{gpsData.address}</span>
           ) : (
-            <span style={{ fontSize: 13, color: '#f59e0b' }}>Location unavailable</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, color: '#dc2626', marginBottom: 6 }}>
+                {error === 'LOCATION_DENIED'
+                  ? '📍 Location access denied. Enable location in browser settings then tap Retry.'
+                  : (error || '📍 Location unavailable.')}
+              </div>
+              <button onClick={startGps}
+                style={{ background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                Retry Location
+              </button>
+            </div>
           )}
         </div>
-
-        {/* Error */}
-        {error && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 12px', color: '#dc2626', fontSize: 13, marginBottom: 12 }}>
-            {error}
-          </div>
-        )}
 
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: 12 }}>
@@ -459,13 +507,15 @@ export default function HomePage() {
             style={{ flex: 1, padding: '14px', borderRadius: 14, border: '1.5px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
             Retake
           </button>
-          <button onClick={submitPunch} disabled={submitting || (gpsLoading && !gpsData)}
+          <button onClick={submitPunch}
+            disabled={submitting || gpsLoading || (!gpsData)}
             style={{
               flex: 2, padding: '14px', borderRadius: 14, border: 'none',
-              background: submitting ? '#93c5fd' : '#1d4ed8',
-              color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+              background: submitting || gpsLoading || !gpsData ? '#93c5fd' : '#1d4ed8',
+              color: '#fff', fontSize: 15, fontWeight: 700,
+              cursor: submitting || gpsLoading || !gpsData ? 'not-allowed' : 'pointer',
             }}>
-            {submitting ? 'Submitting…' : gpsLoading && !gpsData ? 'Getting location…' : 'Submit'}
+            {submitting ? 'Submitting…' : gpsLoading ? 'Getting location…' : !gpsData ? 'Location required' : 'Submit'}
           </button>
         </div>
       </div>
@@ -556,8 +606,23 @@ export default function HomePage() {
         </Card>
       )}
 
-      {/* Error */}
-      {error && (
+      {/* Camera denied — persistent block */}
+      {error === 'CAMERA_DENIED' && (
+        <Card style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', padding: '16px' }}>
+          <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📷</div>
+          <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>Camera Access Required</div>
+          <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
+            Tap the 🔒 lock icon in the browser address bar → Permissions → Camera → Allow, then tap Retry.
+          </div>
+          <button onClick={startCamera}
+            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+            Retry Camera
+          </button>
+        </Card>
+      )}
+
+      {/* Other errors */}
+      {error && error !== 'CAMERA_DENIED' && error !== 'LOCATION_DENIED' && (
         <Card style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', padding: '12px 16px' }}>
           <div style={{ color: '#dc2626', fontSize: 14 }}>{error}</div>
           <button onClick={() => setError('')} style={{ color: '#dc2626', background: 'none', border: 'none', fontSize: 12, marginTop: 4, padding: 0, textDecoration: 'underline', cursor: 'pointer' }}>
