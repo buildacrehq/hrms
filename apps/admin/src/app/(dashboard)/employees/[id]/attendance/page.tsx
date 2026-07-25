@@ -8,6 +8,7 @@ import {
   Umbrella, RefreshCw, Check, X, Download, ExternalLink,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { localDateStr } from '@/lib/utils';
 
 /* ── types ────────────────────────────────────────────────────── */
 type Employee = {

@@ -231,56 +231,63 @@ function PunchesPage() {
       </div>
 
       <div className="px-8 py-6">
-        {/* Date nav + tabs */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        {/* Tabs */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-4 w-fit">
+          {(['pending', 'all'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className="px-5 py-2 rounded-lg text-sm font-medium transition-all"
+              style={{
+                background: tab === t ? '#fff' : 'transparent',
+                color: tab === t ? '#0f172a' : '#64748b',
+                boxShadow: tab === t ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              }}>
+              {t === 'pending'
+                ? `Pending${pendingQ.data ? ` (${pendingCount})` : ''}`
+                : 'All Punches'}
+            </button>
+          ))}
+        </div>
 
-          {/* ← date → navigator */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => { const d = new Date(selectedDate + 'T00:00:00'); d.setDate(d.getDate() - 1); changeDate(localDateStr(d)); }}
-              className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-lg transition-colors"
-            >‹</button>
+        {/* Date navigation bar */}
+        <div className="flex items-center gap-2 mb-6 bg-white border border-slate-200 rounded-2xl px-4 py-3">
+          {/* Prev */}
+          <button
+            onClick={() => { const d = new Date(selectedDate + 'T00:00:00'); d.setDate(d.getDate() - 1); changeDate(localDateStr(d)); }}
+            className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xl transition-colors shrink-0"
+            title="Previous day"
+          >‹</button>
 
-            <div className="relative">
-              <input
-                type="date"
-                value={selectedDate}
-                max={today}
-                onChange={e => changeDate(e.target.value)}
-                className="border border-slate-200 rounded-xl pl-3 pr-8 py-2 text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              />
-            </div>
+          {/* Quick pills */}
+          <button
+            onClick={() => changeDate(today)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0"
+            style={{ background: selectedDate === today ? '#1d4ed8' : '#f1f5f9', color: selectedDate === today ? '#fff' : '#475569' }}
+          >Today</button>
+          <button
+            onClick={() => changeDate(yesterday)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0"
+            style={{ background: selectedDate === yesterday ? '#1d4ed8' : '#f1f5f9', color: selectedDate === yesterday ? '#fff' : '#475569' }}
+          >Yesterday</button>
 
-            <button
-              onClick={() => { const d = new Date(selectedDate + 'T00:00:00'); d.setDate(d.getDate() + 1); if (localDateStr(d) <= today) changeDate(localDateStr(d)); }}
-              disabled={selectedDate >= today}
-              className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            >›</button>
-
-            {selectedDate !== today && (
-              <button
-                onClick={() => changeDate(today)}
-                className="ml-1 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
-              >Today</button>
-            )}
+          {/* Date label / picker */}
+          <div className="flex-1 text-center">
+            <input
+              type="date"
+              value={selectedDate}
+              max={today}
+              onChange={e => e.target.value && changeDate(e.target.value)}
+              className="border-0 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none cursor-pointer text-center w-full"
+              style={{ colorScheme: 'light' }}
+            />
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-            {(['pending', 'all'] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className="px-5 py-2 rounded-lg text-sm font-medium transition-all"
-                style={{
-                  background: tab === t ? '#fff' : 'transparent',
-                  color: tab === t ? '#0f172a' : '#64748b',
-                  boxShadow: tab === t ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                }}>
-                {t === 'pending'
-                  ? `Pending${pendingQ.data ? ` (${pendingCount})` : ''}`
-                  : 'All Punches'}
-              </button>
-            ))}
-          </div>
+          {/* Next */}
+          <button
+            onClick={() => { const d = new Date(selectedDate + 'T00:00:00'); d.setDate(d.getDate() + 1); if (localDateStr(d) <= today) changeDate(localDateStr(d)); }}
+            disabled={selectedDate >= today}
+            className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xl transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+            title="Next day"
+          >›</button>
         </div>
 
         {/* Table */}
