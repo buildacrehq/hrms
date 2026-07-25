@@ -10,13 +10,12 @@ import {
 
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#be185d','#4338ca'];
 
-function StatCard({ label, value, icon: Icon, from, to, sub }: {
+function StatCard({ label, value, icon: Icon, from, to, sub, href }: {
   label: string; value: number | string; icon: React.ElementType;
-  from: string; to: string; sub?: string;
+  from: string; to: string; sub?: string; href?: string;
 }) {
-  return (
-    <div className="rounded-2xl p-5 text-white relative overflow-hidden shadow-sm"
-      style={{ background: `linear-gradient(135deg, ${from}, ${to})` }}>
+  const inner = (
+    <>
       <div className="absolute inset-0 opacity-10"
         style={{ background: 'radial-gradient(circle at top right, white 0%, transparent 60%)' }} />
       <div className="flex items-start justify-between relative">
@@ -30,8 +29,12 @@ function StatCard({ label, value, icon: Icon, from, to, sub }: {
           <Icon size={20} />
         </div>
       </div>
-    </div>
+    </>
   );
+  const cls = "rounded-2xl p-5 text-white relative overflow-hidden shadow-sm block";
+  const style = { background: `linear-gradient(135deg, ${from}, ${to})` };
+  if (href) return <a href={href} className={cls + " hover:opacity-90 transition-opacity"} style={style}>{inner}</a>;
+  return <div className={cls} style={style}>{inner}</div>;
 }
 
 function Avatar({ name }: { name: string }) {
@@ -146,20 +149,24 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Active Employees" value={activeEmployees.length}
             from="#2563eb" to="#1d4ed8" icon={Users}
-            sub={`${activeSites} active site${activeSites !== 1 ? 's' : ''}`} />
+            sub={`${activeSites} active site${activeSites !== 1 ? 's' : ''}`}
+            href="/employees" />
           <StatCard label="Punched In Today" value={todayIn}
             from="#10b981" to="#059669" icon={LogIn}
-            sub={attendanceRate ? `${attendanceRate}% attendance` : 'no data'} />
+            sub={attendanceRate ? `${attendanceRate}% attendance` : 'no data'}
+            href={`/attendance?date=${today}`} />
           <StatCard label="Absent Today" value={absentToday.length}
             from={absentToday.length > 0 ? '#ef4444' : '#64748b'}
             to={absentToday.length > 0 ? '#dc2626' : '#475569'}
             icon={Users}
-            sub={absentToday.length > 0 ? 'not punched in yet' : 'everyone in'} />
+            sub={absentToday.length > 0 ? 'not punched in yet' : 'everyone in'}
+            href={`/attendance?date=${today}`} />
           <StatCard label="Pending Approvals" value={pendingCount}
             from={pendingCount > 0 ? '#f59e0b' : '#64748b'}
             to={pendingCount > 0 ? '#d97706' : '#475569'}
             icon={AlertCircle}
-            sub={pendingCount > 0 ? 'need your attention' : 'all clear'} />
+            sub={pendingCount > 0 ? 'need your attention' : 'all clear'}
+            href="/punches" />
         </div>
 
         {/* Middle row */}

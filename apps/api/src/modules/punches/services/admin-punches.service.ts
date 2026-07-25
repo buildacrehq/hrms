@@ -15,9 +15,16 @@ export class AdminPunchesService {
     private readonly settings: SettingsService,
   ) {}
 
-  async getPending(siteId?: string, cursor?: string) {
+  async getPending(siteId?: string, cursor?: string, date?: string) {
     const where: Prisma.PunchWhereInput = { approvalStatus: 'PENDING' };
     if (siteId) where.siteId = siteId;
+    if (date) {
+      const d = new Date(date);
+      where.timestampServer = {
+        gte: new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0),
+        lte: new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999),
+      };
+    }
 
     const punches = await this.prisma.punch.findMany({
       where,

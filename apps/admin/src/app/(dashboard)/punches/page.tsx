@@ -149,14 +149,15 @@ function PunchesPage() {
   const [cursor, setCursor]         = useState<string | undefined>();
   const [photoModal, setPhotoModal] = useState<PhotoModal | null>(null);
   const [allDate, setAllDate]       = useState(urlDate);
+  const [pendingDate, setPendingDate] = useState(localDateStr());
 
   useEffect(() => {
     if (urlDate) { setTab('all'); setAllDate(urlDate); }
   }, [urlDate]);
 
   const pendingQ = useQuery({
-    queryKey: ['punches', 'pending'],
-    queryFn: () => api.get('/admin/punches/pending').then(r => r.data.data),
+    queryKey: ['punches', 'pending', pendingDate],
+    queryFn: () => api.get('/admin/punches/pending', { params: { date: pendingDate } }).then(r => r.data.data),
     enabled: tab === 'pending',
     refetchInterval: 5_000,
     refetchIntervalInBackground: false,
@@ -247,6 +248,19 @@ function PunchesPage() {
               </button>
             ))}
           </div>
+          {tab === 'pending' && (
+            <div className="flex items-center gap-2">
+              <input type="date" value={pendingDate} onChange={e => setPendingDate(e.target.value)}
+                max={localDateStr()}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+              {pendingDate !== localDateStr() && (
+                <button onClick={() => setPendingDate(localDateStr())}
+                  className="text-xs text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl transition-colors">
+                  Today
+                </button>
+              )}
+            </div>
+          )}
           {tab === 'all' && (
             <div className="flex items-center gap-2">
               <input type="date" value={allDate} onChange={e => { setAllDate(e.target.value); setCursor(undefined); }}

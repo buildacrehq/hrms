@@ -38,11 +38,13 @@ export class AdminPunchesController {
   @ApiOperation({ summary: 'Pending approval queue — paginated, oldest first' })
   @ApiQuery({ name: 'siteId', required: false })
   @ApiQuery({ name: 'cursor', required: false })
+  @ApiQuery({ name: 'date', required: false, description: 'Filter by date (YYYY-MM-DD)' })
   getPending(
     @Query('siteId') siteId?: string,
     @Query('cursor') cursor?: string,
+    @Query('date') date?: string,
   ) {
-    return this.service.getPending(siteId, cursor);
+    return this.service.getPending(siteId, cursor, date);
   }
 
   @Get()
