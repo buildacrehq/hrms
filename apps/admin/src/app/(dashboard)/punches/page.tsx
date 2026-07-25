@@ -233,25 +233,36 @@ function PunchesPage() {
       <div className="px-8 py-6">
         {/* Date nav + tabs */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          {/* Today / Yesterday / picker */}
-          <div className="flex items-center gap-2">
-            {[{ label: 'Today', val: today }, { label: 'Yesterday', val: yesterday }].map(({ label, val }) => (
-              <button key={val} onClick={() => changeDate(val)}
-                className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
-                style={{
-                  background: selectedDate === val ? '#1d4ed8' : '#f1f5f9',
-                  color: selectedDate === val ? '#fff' : '#475569',
-                }}>
-                {label}
-              </button>
-            ))}
-            <input
-              type="date"
-              value={selectedDate}
-              max={today}
-              onChange={e => changeDate(e.target.value)}
-              className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+
+          {/* ← date → navigator */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { const d = new Date(selectedDate + 'T00:00:00'); d.setDate(d.getDate() - 1); changeDate(localDateStr(d)); }}
+              className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-lg transition-colors"
+            >‹</button>
+
+            <div className="relative">
+              <input
+                type="date"
+                value={selectedDate}
+                max={today}
+                onChange={e => changeDate(e.target.value)}
+                className="border border-slate-200 rounded-xl pl-3 pr-8 py-2 text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              />
+            </div>
+
+            <button
+              onClick={() => { const d = new Date(selectedDate + 'T00:00:00'); d.setDate(d.getDate() + 1); if (localDateStr(d) <= today) changeDate(localDateStr(d)); }}
+              disabled={selectedDate >= today}
+              className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >›</button>
+
+            {selectedDate !== today && (
+              <button
+                onClick={() => changeDate(today)}
+                className="ml-1 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+              >Today</button>
+            )}
           </div>
 
           {/* Tabs */}
