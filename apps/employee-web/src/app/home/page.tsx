@@ -188,8 +188,17 @@ export default function HomePage() {
     setError('');
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const address = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
-        const data: GpsData = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, address };
+        const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+        // Approximate location (Android "Neighbourhood") gives >500m accuracy — reject it
+        if (accuracy > 500) {
+          setGpsLoading(false);
+          setError('LOCATION_APPROXIMATE');
+          gpsResolve.current?.(null);
+          gpsResolve.current = null;
+          return;
+        }
+        const address = await reverseGeocode(lat, lng);
+        const data: GpsData = { lat, lng, accuracy, address };
         setGpsData(data);
         setGpsLoading(false);
         gpsResolve.current?.(data);
@@ -202,14 +211,18 @@ export default function HomePage() {
         if (err.code === 1) {
           setError('LOCATION_DENIED');
         } else if (err.code === 3) {
-          setError('📍 Location timed out. Move to an open area and tap Retry.');
+          setError('LOCATION_TIMEOUT');
         } else {
-          setError('📍 Could not get location. Make sure GPS is enabled and tap Retry.');
+          setError('LOCATION_ERROR');
         }
       },
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
   }, []);
+
+  // Start GPS on mount so it's ready before user taps Punch
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { startGps(); }, []);
 
   const startCamera = useCallback(async () => {
     setError('');
@@ -217,8 +230,6 @@ export default function HomePage() {
     setPreviewUrl(null);
     setPreviewTime(null);
     setStep('camera');
-    // Start GPS in parallel while user aims camera
-    startGps();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
@@ -331,7 +342,6 @@ export default function HomePage() {
     stopCamera();
     setPreviewUrl(null);
     setPreviewTime(null);
-    setGpsData(null);
     setStep('idle');
     setError('');
     capturingRef.current = false;
@@ -606,7 +616,78 @@ export default function HomePage() {
         </Card>
       )}
 
-      {/* Camera denied — persistent block */}
+      {/* GPS status card — always visible */}
+      {step === 'idle' && (() => {
+        const locErr = ['LOCATION_DENIED','LOCATION_APPROXIMATE','LOCATION_TIMEOUT','LOCATION_ERROR'].includes(error);
+        return (
+          <Card style={{ padding: '14px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* Icon */}
+              {gpsLoading ? (
+                <Spinner size={18} />
+              ) : gpsData ? (
+                <span style={{ fontSize: 18, lineHeight: 1 }}>📍</span>
+              ) : (
+                <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
+              )}
+
+              {/* Text */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {gpsLoading && (
+                  <span style={{ fontSize: 13, color: '#6b7280' }}>Getting your location…</span>
+                )}
+                {gpsData && (
+                  <>
+                    <div style={{ fontSize: 13, color: '#111827', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {gpsData.address}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>
+                      Precise · ±{Math.round(gpsData.accuracy)}m accuracy
+                    </div>
+                  </>
+                )}
+                {!gpsLoading && !gpsData && error === 'LOCATION_DENIED' && (
+                  <div style={{ fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+                    Location access denied
+                    <div style={{ fontSize: 11, fontWeight: 400, color: '#7f1d1d', marginTop: 2 }}>
+                      Tap 🔒 in address bar → Permissions → Location → Allow
+                    </div>
+                  </div>
+                )}
+                {!gpsLoading && !gpsData && error === 'LOCATION_APPROXIMATE' && (
+                  <div style={{ fontSize: 13, color: '#d97706', fontWeight: 600 }}>
+                    Approximate location detected
+                    <div style={{ fontSize: 11, fontWeight: 400, color: '#92400e', marginTop: 2 }}>
+                      Select "Precise" when prompted, then tap retry
+                    </div>
+                  </div>
+                )}
+                {!gpsLoading && !gpsData && (error === 'LOCATION_TIMEOUT' || error === 'LOCATION_ERROR') && (
+                  <div style={{ fontSize: 13, color: '#dc2626' }}>
+                    {error === 'LOCATION_TIMEOUT' ? 'Location timed out — move to open area' : 'Cannot get location — check GPS settings'}
+                  </div>
+                )}
+              </div>
+
+              {/* Reload button */}
+              {(locErr || gpsData) && (
+                <button onClick={startGps} title="Refresh location"
+                  style={{
+                    background: gpsData ? '#f0fdf4' : '#fef2f2',
+                    border: `1.5px solid ${gpsData ? '#86efac' : '#fca5a5'}`,
+                    borderRadius: 10, width: 36, height: 36,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', flexShrink: 0, fontSize: 16,
+                  }}>
+                  🔄
+                </button>
+              )}
+            </div>
+          </Card>
+        );
+      })()}
+
+      {/* Camera denied */}
       {error === 'CAMERA_DENIED' && (
         <Card style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', padding: '16px' }}>
           <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📷</div>
@@ -621,35 +702,46 @@ export default function HomePage() {
         </Card>
       )}
 
-      {/* Other errors */}
-      {error && error !== 'CAMERA_DENIED' && error !== 'LOCATION_DENIED' && (
-        <Card style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', padding: '12px 16px' }}>
-          <div style={{ color: '#dc2626', fontSize: 14 }}>{error}</div>
-          <button onClick={() => setError('')} style={{ color: '#dc2626', background: 'none', border: 'none', fontSize: 12, marginTop: 4, padding: 0, textDecoration: 'underline', cursor: 'pointer' }}>
-            Dismiss
-          </button>
-        </Card>
-      )}
-
       {/* Punch button */}
-      {step === 'idle' && (
-        <div style={{ padding: '20px 16px' }}>
-          <button onClick={startCamera} style={{
-            width: '100%', padding: '18px 0', borderRadius: 16, border: 'none',
-            background: nextPunch === 'IN' ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,#dc2626,#b91c1c)',
-            color: '#fff', fontSize: 18, fontWeight: 700,
-            boxShadow: '0 4px 18px rgba(0,0,0,0.15)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-            cursor: 'pointer',
-          }}>
-            <span style={{ fontSize: 24 }}>{nextPunch === 'IN' ? '🟢' : '🔴'}</span>
-            Punch {nextPunch}
-          </button>
-          <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 10 }}>
-            {faceRequired ? 'Selfie + GPS required' : 'GPS required'}
-          </p>
-        </div>
-      )}
+      {step === 'idle' && (() => {
+        const gpsReady = !!gpsData && !gpsLoading;
+        return (
+          <div style={{ padding: '16px 16px 20px' }}>
+            <button
+              onClick={gpsReady ? startCamera : undefined}
+              disabled={!gpsReady}
+              style={{
+                width: '100%', padding: '18px 0', borderRadius: 16, border: 'none',
+                background: !gpsReady
+                  ? '#d1d5db'
+                  : nextPunch === 'IN'
+                    ? 'linear-gradient(135deg,#16a34a,#15803d)'
+                    : 'linear-gradient(135deg,#dc2626,#b91c1c)',
+                color: !gpsReady ? '#9ca3af' : '#fff',
+                fontSize: 18, fontWeight: 700,
+                boxShadow: gpsReady ? '0 4px 18px rgba(0,0,0,0.18)' : 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+                cursor: gpsReady ? 'pointer' : 'not-allowed',
+                transition: 'all 0.25s',
+              }}>
+              {gpsLoading ? (
+                <>
+                  <Spinner size={20} />
+                  <span>Getting Location…</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: 24 }}>{nextPunch === 'IN' ? '🟢' : '🔴'}</span>
+                  Punch {nextPunch}
+                </>
+              )}
+            </button>
+            <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 10 }}>
+              {!gpsReady ? 'Waiting for precise location…' : faceRequired ? 'Selfie + GPS required' : 'GPS required'}
+            </p>
+          </div>
+        );
+      })()}
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
