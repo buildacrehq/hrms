@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { SmsService } from './sms.service';
@@ -14,8 +13,6 @@ export class PunchReminderService {
     private readonly sms: SmsService,
   ) {}
 
-  // Runs every hour — fires when now is within 15 min before shift_start and reminder is enabled
-  @Cron('0 * * * *')
   async maybeSendPunchInReminder(): Promise<void> {
     const enabled = await this.settings.get('punchin_reminder_enabled', 'false');
     if (enabled !== 'true') return;
@@ -50,8 +47,6 @@ export class PunchReminderService {
     }
   }
 
-  // Runs every hour at :30 — fires when now is at shift_end + bufferMin
-  @Cron('30 * * * *')
   async maybeSendPunchOutReminder(): Promise<void> {
     const bufferMin = await this.settings.getNumber('punchout_reminder_buffer', 0);
     if (bufferMin <= 0) return;

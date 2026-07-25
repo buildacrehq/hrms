@@ -9,6 +9,6 @@ import { LeaveAccrualService } from './leave-accrual.service';
   imports: [AuthModule],
   controllers: [LeavesController, EmployeeLeavesController],
   providers: [LeavesService, LeaveAccrualService],
-  exports: [LeavesService],
+  exports: [LeavesService, LeaveAccrualService],
 })
 export class LeavesModule {}

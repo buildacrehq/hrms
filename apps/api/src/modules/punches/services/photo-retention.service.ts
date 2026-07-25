@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { SettingsService } from '../../settings/settings.service';
@@ -14,8 +13,6 @@ export class PhotoRetentionService {
     private readonly settings: SettingsService,
   ) {}
 
-  /** Runs daily at 03:00 — deletes punch photos older than the configured retention period. */
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async runRetentionCleanup(): Promise<void> {
     const retentionDays = await this.settings.getNumber('photo_retention_days', 90);
     const cutoff = new Date();

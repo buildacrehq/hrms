@@ -13,5 +13,6 @@ import { PhotoRetentionService } from './services/photo-retention.service';
   imports: [StorageModule, AuthModule],
   controllers: [PunchesController, AdminPunchesController],
   providers: [PunchesService, AdminPunchesService, PhotoRetentionService],
+  exports: [PhotoRetentionService],
 })
 export class PunchesModule {}

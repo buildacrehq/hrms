@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/serverless.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/src/serverless.ts"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/internal/accrue-leaves",
+      "schedule": "5 0 1 * *"
+    },
+    {
+      "path": "/api/v1/internal/cleanup-photos",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
