@@ -583,132 +583,154 @@ export default function HomePage() {
 
   // ── Main home screen ──
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', paddingBottom: 140 }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', background: '#f1f5f9', paddingBottom: 140 }}>
 
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #1d4ed8, #1e40af)', padding: '48px 20px 22px', color: '#fff' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>
-              {employee ? getDailyWish(employee.name) : `Good ${getTimeOfDay()}! 👋`}
-            </div>
-            {employee?.defaultSite && (
-              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>📍 {employee.defaultSite.name}</div>
-            )}
-          </div>
+      {/* ── Hero Header ── */}
+      <div style={{
+        background: 'linear-gradient(155deg, #1e3a8a 0%, #1d4ed8 55%, #3b82f6 100%)',
+        padding: '54px 20px 28px',
+        position: 'relative', overflow: 'hidden',
+      }}>
+        {/* Decorative circles */}
+        <div style={{ position: 'absolute', top: -50, right: -50, width: 190, height: 190, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -15, left: 10, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', pointerEvents: 'none' }} />
+
+        {/* Brand name + Avatar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.14em' }}>BA Workforce</span>
           <Avatar name={employee?.name ?? ''} />
         </div>
+
+        {/* Large clock */}
+        <div style={{ fontSize: 62, fontWeight: 800, color: '#fff', letterSpacing: -2, lineHeight: 1 }}>
+          {formatTime(now)}
+        </div>
+
+        {/* Date */}
+        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', marginTop: 8, fontWeight: 500 }}>
+          {formatDate(now)}
+        </div>
+
+        {/* Site */}
+        {employee?.defaultSite && (
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.42)', marginTop: 4 }}>
+            📍 {employee.defaultSite.name}
+          </div>
+        )}
+
+        {/* Greeting bubble */}
+        {employee && (
+          <div style={{
+            marginTop: 18, background: 'rgba(255,255,255,0.11)',
+            borderRadius: 14, padding: '11px 14px',
+            fontSize: 13, color: 'rgba(255,255,255,0.92)',
+            lineHeight: 1.55, fontWeight: 500,
+          }}>
+            {getDailyWish(employee.name)}
+          </div>
+        )}
       </div>
 
-      {/* Clock */}
-      <Card style={{ textAlign: 'center', padding: '22px 20px' }}>
-        <div style={{ fontSize: 44, fontWeight: 700, color: '#111827', letterSpacing: -1, lineHeight: 1 }}>{formatTime(now)}</div>
-        <div style={{ fontSize: 14, color: '#6b7280', marginTop: 6 }}>{formatDate(now)}</div>
-      </Card>
+      {/* ── Content ── */}
+      <div style={{ flex: 1, padding: '14px 14px 0' }}>
 
-      {/* Monthly summary */}
-      {monthStats && (
-        <Card style={{ padding: '14px 16px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>This Month</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            {[
-              { label: 'Present', value: monthStats.present, color: '#15803d', bg: '#f0fdf4' },
-              { label: 'Absent',  value: monthStats.absent,  color: '#dc2626', bg: '#fef2f2' },
-              { label: 'Pending', value: monthStats.pending, color: '#a16207', bg: '#fefce8' },
-            ].map(s => (
-              <div key={s.label} style={{ background: s.bg, borderRadius: 10, padding: '8px', textAlign: 'center' }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
-                <div style={{ fontSize: 10, fontWeight: 600, color: s.color, opacity: 0.75, marginTop: 2 }}>{s.label}</div>
-              </div>
-            ))}
+        {/* Clocked-in status pill */}
+        {nextPunch === 'OUT' && step !== 'done' && (
+          <div style={{
+            background: '#fff', borderRadius: 16, padding: '13px 16px', marginBottom: 12,
+            display: 'flex', alignItems: 'center', gap: 12,
+            border: '1px solid #bbf7d0', boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+          }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#16a34a', flexShrink: 0, boxShadow: '0 0 0 4px rgba(22,163,74,0.18)' }} />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>You're clocked in</div>
+              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>Remember to punch out at end of shift</div>
+            </div>
           </div>
-          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8, textAlign: 'center' }}>
-            {monthStats.workingDays} working days so far this month
-          </div>
-        </Card>
-      )}
+        )}
 
-      {/* Install banner */}
-      {installReady && (
-        <div style={{ margin: '0 16px 12px', background: 'linear-gradient(135deg, #1d4ed8, #1e40af)', borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>Add to Home Screen</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>Install for faster access</div>
+        {/* Success */}
+        {step === 'done' && (
+          <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 16, textAlign: 'center', padding: '20px', marginBottom: 12 }}>
+            <div style={{ fontSize: 32 }}>✅</div>
+            <div style={{ fontWeight: 700, color: '#16a34a', fontSize: 16, marginTop: 8 }}>
+              Punched {nextPunch === 'OUT' ? 'IN' : 'OUT'} successfully!
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button onClick={async () => { await installRef.current?.prompt(); setInstallReady(false); }}
-              style={{ background: '#fff', color: '#1d4ed8', border: 'none', borderRadius: 10, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              Install
-            </button>
-            <button onClick={() => setInstallReady(false)}
-              style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none', borderRadius: 10, padding: '7px 10px', fontSize: 12, cursor: 'pointer' }}>
-              ✕
+        )}
+
+        {/* Location denied */}
+        {error === 'LOCATION_DENIED' && step === 'idle' && (
+          <div style={{ background: '#fff', border: '1.5px solid #fca5a5', borderRadius: 16, padding: '16px', marginBottom: 12 }}>
+            <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📍</div>
+            <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>Location is OFF</div>
+            <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
+              You must enable location to punch in or out.<br />
+              Tap the 🔒 lock icon in the browser address bar → Permissions → Location → Allow.
+            </div>
+            <button onClick={startGps}
+              style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+              Retry Location
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Success */}
-      {step === 'done' && (
-        <Card style={{ background: '#f0fdf4', border: '1.5px solid #86efac', textAlign: 'center', padding: '20px' }}>
-          <div style={{ fontSize: 32 }}>✅</div>
-          <div style={{ fontWeight: 700, color: '#16a34a', fontSize: 16, marginTop: 8 }}>
-            Punched {nextPunch === 'OUT' ? 'IN' : 'OUT'} successfully!
+        {/* Location approximate / timeout / error */}
+        {(error === 'LOCATION_APPROXIMATE' || error === 'LOCATION_TIMEOUT' || error === 'LOCATION_ERROR') && step === 'idle' && (
+          <div style={{ background: '#fff', border: '1.5px solid #fde68a', borderRadius: 16, padding: '16px', marginBottom: 12 }}>
+            <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📍</div>
+            <div style={{ fontWeight: 700, color: '#b45309', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>
+              {error === 'LOCATION_APPROXIMATE' ? 'Approximate Location Detected' : 'Location Unavailable'}
+            </div>
+            <div style={{ color: '#78350f', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
+              {error === 'LOCATION_APPROXIMATE'
+                ? 'Go to Settings → Privacy → Location → select Precise location, then tap Retry.'
+                : error === 'LOCATION_TIMEOUT'
+                ? 'Location timed out. Move to an open area and tap Retry.'
+                : 'Cannot get your location. Check location settings and tap Retry.'}
+            </div>
+            <button onClick={startGps}
+              style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#d97706', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+              Retry Location
+            </button>
           </div>
-        </Card>
-      )}
+        )}
 
-      {/* Location denied — visible on idle screen */}
-      {error === 'LOCATION_DENIED' && step === 'idle' && (
-        <Card style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', padding: '16px' }}>
-          <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📍</div>
-          <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>Location is OFF</div>
-          <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
-            You must enable location to punch in or out.<br />
-            Tap the 🔒 lock icon in the browser address bar → Permissions → Location → Allow.
+        {/* Camera denied */}
+        {error === 'CAMERA_DENIED' && (
+          <div style={{ background: '#fff', border: '1.5px solid #fca5a5', borderRadius: 16, padding: '16px', marginBottom: 12 }}>
+            <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📷</div>
+            <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>Camera Access Required</div>
+            <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
+              Tap the 🔒 lock icon in the browser address bar → Permissions → Camera → Allow, then tap Retry.
+            </div>
+            <button onClick={startCamera}
+              style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+              Retry Camera
+            </button>
           </div>
-          <button onClick={startGps}
-            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
-            Retry Location
-          </button>
-        </Card>
-      )}
+        )}
 
-      {/* Location approximate or error — visible on idle screen */}
-      {(error === 'LOCATION_APPROXIMATE' || error === 'LOCATION_TIMEOUT' || error === 'LOCATION_ERROR') && step === 'idle' && (
-        <Card style={{ background: '#fffbeb', border: '1.5px solid #fde68a', padding: '16px' }}>
-          <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📍</div>
-          <div style={{ fontWeight: 700, color: '#b45309', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>
-            {error === 'LOCATION_APPROXIMATE' ? 'Approximate Location Detected' : 'Location Unavailable'}
+        {/* Install banner */}
+        {installReady && (
+          <div style={{ background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)', borderRadius: 16, padding: '14px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>Add to Home Screen</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>Install BA Workforce for faster access</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              <button onClick={async () => { await installRef.current?.prompt(); setInstallReady(false); }}
+                style={{ background: '#fff', color: '#1d4ed8', border: 'none', borderRadius: 10, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                Install
+              </button>
+              <button onClick={() => setInstallReady(false)}
+                style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none', borderRadius: 10, padding: '7px 10px', fontSize: 12, cursor: 'pointer' }}>
+                ✕
+              </button>
+            </div>
           </div>
-          <div style={{ color: '#78350f', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
-            {error === 'LOCATION_APPROXIMATE'
-              ? 'Your device is using approximate location. Go to Settings → Privacy → Location → select Precise location, then tap Retry.'
-              : error === 'LOCATION_TIMEOUT'
-              ? 'Location timed out. Move to an open area with clear sky and tap Retry.'
-              : 'Cannot get your location. Please check location settings and tap Retry.'}
-          </div>
-          <button onClick={startGps}
-            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#d97706', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
-            Retry Location
-          </button>
-        </Card>
-      )}
-
-      {/* Camera denied */}
-      {error === 'CAMERA_DENIED' && (
-        <Card style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', padding: '16px' }}>
-          <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📷</div>
-          <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>Camera Access Required</div>
-          <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
-            Tap the 🔒 lock icon in the browser address bar → Permissions → Camera → Allow, then tap Retry.
-          </div>
-          <button onClick={startCamera}
-            style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
-            Retry Camera
-          </button>
-        </Card>
-      )}
+        )}
+      </div>
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
@@ -721,7 +743,7 @@ export default function HomePage() {
             left: '50%', transform: 'translateX(-50%)',
             width: '100%', maxWidth: 480,
             padding: '10px 16px 12px',
-            background: 'linear-gradient(to top, #fff 70%, rgba(255,255,255,0))',
+            background: 'linear-gradient(to top, #f1f5f9 70%, rgba(241,245,249,0))',
             zIndex: 40,
           }}>
             <button
