@@ -536,7 +536,7 @@ export default function HomePage() {
 
   // ── Main home screen ──
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', paddingBottom: 72 }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', paddingBottom: 160 }}>
 
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1d4ed8, #1e40af)', padding: '48px 20px 22px', color: '#fff' }}>
@@ -702,11 +702,20 @@ export default function HomePage() {
         </Card>
       )}
 
-      {/* Punch button */}
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+      {/* Fixed punch button — sits above bottom nav */}
       {step === 'idle' && (() => {
         const gpsReady = !!gpsData && !gpsLoading;
         return (
-          <div style={{ padding: '16px 16px 20px' }}>
+          <div style={{
+            position: 'fixed', bottom: 'calc(56px + env(safe-area-inset-bottom))',
+            left: '50%', transform: 'translateX(-50%)',
+            width: '100%', maxWidth: 480,
+            padding: '10px 16px 12px',
+            background: 'linear-gradient(to top, #fff 70%, rgba(255,255,255,0))',
+            zIndex: 40,
+          }}>
             <button
               onClick={gpsReady ? startCamera : undefined}
               disabled={!gpsReady}
@@ -736,14 +745,12 @@ export default function HomePage() {
                 </>
               )}
             </button>
-            <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 10 }}>
+            <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 6, marginBottom: 0 }}>
               {!gpsReady ? 'Waiting for precise location…' : faceRequired ? 'Selfie + GPS required' : 'GPS required'}
             </p>
           </div>
         );
       })()}
-
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       <nav style={{
         position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
