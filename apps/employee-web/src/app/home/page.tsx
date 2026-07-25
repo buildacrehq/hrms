@@ -583,11 +583,10 @@ export default function HomePage() {
 
   // ── Main home screen ──
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', background: '#f1f5f9', paddingBottom: 140 }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto', background: 'linear-gradient(160deg, #1e3a8a 0%, #1d4ed8 45%, #1e40af 100%)', paddingBottom: 140 }}>
 
       {/* ── Hero Header ── */}
       <div style={{
-        background: 'linear-gradient(155deg, #1e3a8a 0%, #1d4ed8 55%, #3b82f6 100%)',
         padding: '54px 20px 28px',
         position: 'relative', overflow: 'hidden',
       }}>
@@ -637,23 +636,23 @@ export default function HomePage() {
         {/* Clocked-in status pill */}
         {nextPunch === 'OUT' && step !== 'done' && (
           <div style={{
-            background: '#fff', borderRadius: 16, padding: '13px 16px', marginBottom: 12,
+            background: 'rgba(255,255,255,0.12)', borderRadius: 16, padding: '13px 16px', marginBottom: 12,
             display: 'flex', alignItems: 'center', gap: 12,
-            border: '1px solid #bbf7d0', boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+            border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)',
           }}>
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#16a34a', flexShrink: 0, boxShadow: '0 0 0 4px rgba(22,163,74,0.18)' }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#4ade80', flexShrink: 0, boxShadow: '0 0 0 4px rgba(74,222,128,0.25)' }} />
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>You're clocked in</div>
-              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>Remember to punch out at end of shift</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>You're clocked in</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 1 }}>Remember to punch out at end of shift</div>
             </div>
           </div>
         )}
 
         {/* Success */}
         {step === 'done' && (
-          <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 16, textAlign: 'center', padding: '20px', marginBottom: 12 }}>
+          <div style={{ background: 'rgba(22,163,74,0.25)', border: '1px solid rgba(74,222,128,0.35)', borderRadius: 16, textAlign: 'center', padding: '20px', marginBottom: 12, backdropFilter: 'blur(10px)' }}>
             <div style={{ fontSize: 32 }}>✅</div>
-            <div style={{ fontWeight: 700, color: '#16a34a', fontSize: 16, marginTop: 8 }}>
+            <div style={{ fontWeight: 700, color: '#fff', fontSize: 16, marginTop: 8 }}>
               Punched {nextPunch === 'OUT' ? 'IN' : 'OUT'} successfully!
             </div>
           </div>
@@ -713,7 +712,7 @@ export default function HomePage() {
 
         {/* Install banner */}
         {installReady && (
-          <div style={{ background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)', borderRadius: 16, padding: '14px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 16, padding: '14px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, backdropFilter: 'blur(10px)' }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>Add to Home Screen</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>Install BA Workforce for faster access</div>
@@ -743,7 +742,7 @@ export default function HomePage() {
             left: '50%', transform: 'translateX(-50%)',
             width: '100%', maxWidth: 480,
             padding: '10px 16px 12px',
-            background: 'linear-gradient(to top, #f1f5f9 70%, rgba(241,245,249,0))',
+            background: 'linear-gradient(to top, #1e3a8a 70%, rgba(30,58,138,0))',
             zIndex: 40,
           }}>
             <button
@@ -775,7 +774,7 @@ export default function HomePage() {
                 </>
               )}
             </button>
-            <p style={{ textAlign: 'center', fontSize: 12, color: error === 'LOCATION_DENIED' ? '#dc2626' : '#9ca3af', marginTop: 6, marginBottom: 0 }}>
+            <p style={{ textAlign: 'center', fontSize: 12, color: error === 'LOCATION_DENIED' ? '#fca5a5' : 'rgba(255,255,255,0.55)', marginTop: 6, marginBottom: 0 }}>
               {error === 'LOCATION_DENIED' ? '📍 Turn ON location to punch' :
                error === 'LOCATION_APPROXIMATE' ? '📍 Precise location required' :
                !gpsReady ? 'Waiting for precise location…' : faceRequired ? 'Selfie + GPS required' : 'GPS required'}
