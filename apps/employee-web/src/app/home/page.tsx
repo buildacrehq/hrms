@@ -134,6 +134,8 @@ export default function HomePage() {
   const installRef   = useRef<any>(null);
   const gpsResolve   = useRef<((g: GpsData | null) => void) | null>(null);
 
+  const isNativeApp = typeof window !== 'undefined' && !!(window as any).Capacitor;
+
   const [monthStats,   setMonthStats]   = useState<MonthStats | null>(null);
   const [installReady, setInstallReady] = useState(false);
   const [faceInFrame,  setFaceInFrame]  = useState<boolean | null>(null);
@@ -251,6 +253,8 @@ export default function HomePage() {
         gpsResolve.current = null;
         if (err.code === 1) {
           setError('LOCATION_DENIED');
+        } else if (err.code === 2) {
+          setError('LOCATION_OFF'); // system GPS is turned off
         } else if (err.code === 3) {
           setError('LOCATION_TIMEOUT');
         } else {
@@ -337,6 +341,7 @@ export default function HomePage() {
       gps = await new Promise<GpsData | null>(resolve => { gpsResolve.current = resolve; });
     }
     if (!gps) {
+      setSubmitting(false);
       setError('📍 Location is required to punch. Please enable location and tap Retry.');
       return;
     }
@@ -396,16 +401,20 @@ export default function HomePage() {
     </div>
   );
 
-  // ── Location denied — blocking screen ──
-  if (step === 'camera' && error === 'LOCATION_DENIED') return (
+  // ── Location denied / off — blocking screen ──
+  if (step === 'camera' && (error === 'LOCATION_DENIED' || error === 'LOCATION_OFF')) return (
     <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
       <div style={{ fontSize: 56, marginBottom: 16 }}>📍</div>
-      <div style={{ fontSize: 20, fontWeight: 800, color: '#111827', marginBottom: 10 }}>Location Required</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: '#111827', marginBottom: 10 }}>
+        {error === 'LOCATION_OFF' ? 'GPS is Turned Off' : 'Location Required'}
+      </div>
       <div style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6, marginBottom: 28 }}>
-        Location access is required to punch in or out. Your attendance cannot be recorded without it.
-        <br /><br />
-        <strong>How to enable:</strong><br />
-        Tap the 🔒 lock icon in your browser address bar → Permissions → Location → Allow
+        {error === 'LOCATION_OFF'
+          ? <>Your phone's GPS is off.<br /><br /><strong>Go to Settings → Location</strong> and turn it on, then tap Try Again.</>
+          : isNativeApp
+            ? <>Location access is required to punch.<br /><br /><strong>Go to Settings → Apps → BA Workforce → Permissions → Location → Allow</strong></>
+            : <>Location access is required to punch.<br /><br /><strong>Tap the 🔒 lock icon → Permissions → Location → Allow</strong></>
+        }
       </div>
       <button onClick={startGps}
         style={{ width: '100%', padding: '16px', borderRadius: 14, border: 'none', background: '#1d4ed8', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
@@ -662,10 +671,27 @@ export default function HomePage() {
         {error === 'LOCATION_DENIED' && step === 'idle' && (
           <div style={{ background: '#fff', border: '1.5px solid #fca5a5', borderRadius: 16, padding: '16px', marginBottom: 12 }}>
             <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📍</div>
-            <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>Location is OFF</div>
+            <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>Location Permission Denied</div>
             <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
-              You must enable location to punch in or out.<br />
-              Tap the 🔒 lock icon in the browser address bar → Permissions → Location → Allow.
+              {isNativeApp
+                ? 'Go to phone Settings → Apps → BA Workforce → Permissions → Location → Allow.'
+                : 'Tap the 🔒 lock icon in the browser address bar → Permissions → Location → Allow.'}
+            </div>
+            <button onClick={startGps}
+              style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+              Retry Location
+            </button>
+          </div>
+        )}
+
+        {/* Location off at system level */}
+        {error === 'LOCATION_OFF' && step === 'idle' && (
+          <div style={{ background: '#fff', border: '1.5px solid #fca5a5', borderRadius: 16, padding: '16px', marginBottom: 12 }}>
+            <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📍</div>
+            <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>GPS is Turned Off</div>
+            <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
+              Your phone's location is off. Go to{' '}
+              <strong>Settings → Location</strong> and turn it on, then tap Retry.
             </div>
             <button onClick={startGps}
               style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
@@ -701,7 +727,9 @@ export default function HomePage() {
             <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📷</div>
             <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>Camera Access Required</div>
             <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
-              Tap the 🔒 lock icon in the browser address bar → Permissions → Camera → Allow, then tap Retry.
+              {isNativeApp
+                ? 'Go to Settings → Apps → BA Workforce → Permissions → Camera → Allow, then tap Retry.'
+                : 'Tap the 🔒 lock icon in the browser address bar → Permissions → Camera → Allow, then tap Retry.'}
             </div>
             <button onClick={startCamera}
               style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
@@ -710,8 +738,8 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Install banner */}
-        {installReady && (
+        {/* Install banner — hidden in APK */}
+        {installReady && !isNativeApp && (
           <div style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 16, padding: '14px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, backdropFilter: 'blur(10px)' }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>Add to Home Screen</div>
