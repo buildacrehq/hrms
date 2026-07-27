@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { api, clearTokens } from '@/lib/api';
 
 type Employee = {
@@ -449,7 +450,7 @@ function BottomNav({ active }: { active: 'home' | 'history' | 'leaves' | 'profil
       paddingBottom: 'env(safe-area-inset-bottom)',
     }}>
       {items.map(item => (
-        <a key={item.key} href={item.href} style={{
+        <Link key={item.key} href={item.href} style={{
           flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
           padding: '8px 0 6px', textDecoration: 'none',
           color: active === item.key ? '#1d4ed8' : '#9ca3af',
@@ -457,7 +458,7 @@ function BottomNav({ active }: { active: 'home' | 'history' | 'leaves' | 'profil
         }}>
           <span style={{ fontSize: 18, lineHeight: 1 }}>{item.icon}</span>
           <span style={{ fontSize: 10, fontWeight: 600, marginTop: 2 }}>{item.label}</span>
-        </a>
+        </Link>
       ))}
     </nav>
   );

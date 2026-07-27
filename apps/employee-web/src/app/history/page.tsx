@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 
 type Punch = {
@@ -717,7 +718,7 @@ function BottomNav({ active }: { active: 'home' | 'leaves' | 'history' | 'profil
       paddingBottom: 'env(safe-area-inset-bottom)',
     }}>
       {items.map(item => (
-        <a key={item.key} href={item.href} style={{
+        <Link key={item.key} href={item.href} style={{
           flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
           padding: '8px 0 6px', textDecoration: 'none',
           color: active === item.key ? '#1d4ed8' : '#9ca3af',
@@ -725,7 +726,7 @@ function BottomNav({ active }: { active: 'home' | 'leaves' | 'history' | 'profil
         }}>
           <span style={{ fontSize: 18, lineHeight: 1 }}>{item.icon}</span>
           <span style={{ fontSize: 10, fontWeight: 600, marginTop: 2 }}>{item.label}</span>
-        </a>
+        </Link>
       ))}
     </nav>
   );
