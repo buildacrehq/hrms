@@ -500,9 +500,10 @@ export default function HomePage() {
         <div style={{ width: 30 }} />
       </div>
 
-      {/* Video — hidden until stream plays to avoid Android WebView control flash */}
+      {/* Black placeholder while camera initialises — prevents Android WebView showing its default video icon */}
+      {!videoReady && <div style={{ flex: 1, background: '#000' }} />}
       <video ref={videoRef} playsInline muted autoPlay
-        style={{ flex: 1, width: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)', visibility: videoReady ? 'visible' : 'hidden' }} />
+        style={{ flex: videoReady ? 1 : 0, width: '100%', objectFit: 'cover', display: videoReady ? 'block' : 'none', transform: 'scaleX(-1)' }} />
 
       {/* Face status badge */}
       {faceRequired && faceInFrame !== null && (
