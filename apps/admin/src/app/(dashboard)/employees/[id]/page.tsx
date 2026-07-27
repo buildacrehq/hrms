@@ -22,6 +22,7 @@ type Employee = {
   monthlySalary: string | null;
   joinedAt: string; exitedAt: string | null;
   defaultSite: { id: string; name: string } | null;
+  isTestAccount: boolean;
 };
 type Site = { id: string; name: string };
 type DeviceSession = {
@@ -316,6 +317,24 @@ export default function EmployeeDetailPage() {
                   ...sites.map(s => ({ value: s.id, label: s.name })),
                 ]}
                 onSave={v => patch('defaultSiteId', v || null)} />
+
+              {/* Test account toggle */}
+              <div className="flex items-center gap-3 py-4 border-b border-slate-100 last:border-0">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                  <AlertTriangle size={14} className="text-amber-500" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-slate-800">Test Account</div>
+                  <div className="text-xs text-slate-400 mt-0.5">Bypasses 1 punch-in / 1 punch-out per day limit</div>
+                </div>
+                <button type="button"
+                  onClick={() => patch('isTestAccount', !emp.isTestAccount)}
+                  className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
+                  style={{ background: emp.isTestAccount ? '#f59e0b' : '#e2e8f0' }}>
+                  <span className="inline-block rounded-full bg-white shadow transition-transform duration-200"
+                    style={{ width: 18, height: 18, transform: emp.isTestAccount ? 'translateX(22px)' : 'translateX(3px)' }} />
+                </button>
+              </div>
             </div>
           </section>
 

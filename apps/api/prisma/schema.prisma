@@ -28,6 +28,8 @@ model Employee {
   // Monthly salary in INR; null = not configured
   monthlySalary  Decimal? @db.Decimal(10, 2)
   employmentType EmpType  @default(MONTHLY_REGULAR)
+  // Test accounts bypass the 1 punch-in / 1 punch-out per day limit
+  isTestAccount  Boolean  @default(false)
   punches          Punch[]
   leaveRequests    LeaveRequest[]
   leaveBalances    LeaveBalance[]

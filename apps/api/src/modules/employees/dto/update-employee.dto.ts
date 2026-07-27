@@ -1,4 +1,4 @@
-import { IsString, IsEnum, Matches, IsOptional, IsNumber, Min } from 'class-validator';
+import { IsString, IsEnum, Matches, IsOptional, IsNumber, Min, IsBoolean } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Gender, Role, EmpType } from '@prisma/client';
 
@@ -39,4 +39,9 @@ export class UpdateEmployeeDto {
   @IsEnum(EmpType)
   @IsOptional()
   employmentType?: EmpType;
+
+  @ApiPropertyOptional({ description: 'Bypass 1-punch-per-day limit (for test accounts)' })
+  @IsBoolean()
+  @IsOptional()
+  isTestAccount?: boolean;
 }

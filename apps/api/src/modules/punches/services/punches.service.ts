@@ -30,7 +30,18 @@ export class PunchesService {
   }
 
   async create(employeeId: string, dto: CreatePunchDto, device?: DeviceInfo) {
-    const siteId = await this.getDefaultSite(employeeId);
+    const emp = await this.prisma.employee.findUniqueOrThrow({
+      where: { id: employeeId },
+      select: { defaultSiteId: true, isTestAccount: true },
+    });
+
+    if (!emp.defaultSiteId) {
+      throw new BadRequestException('No site assigned to your account. Contact your Admin.');
+    }
+
+    if (!emp.isTestAccount) {
+      await this.guardNoDuplicateToday(employeeId, dto.type);
+    }
 
     const requirePhoto = await this.settings.getBoolean('require_photo', true);
     const allowOnFail = await this.settings.getBoolean('allow_punch_on_camera_fail', true);
@@ -46,7 +57,7 @@ export class PunchesService {
     return this.prisma.punch.create({
       data: {
         employeeId,
-        siteId,
+        siteId: emp.defaultSiteId,
         type: dto.type,
         timestampDevice: new Date(dto.timestampDevice),
         lat: dto.lat,
@@ -100,7 +111,7 @@ export class PunchesService {
     };
   }
 
-  private async guardNoDuplicateIn(employeeId: string): Promise<void> {
+  private async guardNoDuplicateToday(employeeId: string, type: PunchType): Promise<void> {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
@@ -109,7 +120,7 @@ export class PunchesService {
     const existing = await this.prisma.punch.findFirst({
       where: {
         employeeId,
-        type: 'IN',
+        type,
         approvalStatus: { in: ['PENDING', 'APPROVED'] },
         timestampServer: { gte: todayStart, lte: todayEnd },
       },
@@ -117,19 +128,10 @@ export class PunchesService {
 
     if (existing) {
       throw new BadRequestException(
-        'You already have a punch-in recorded for today. Please punch out first.',
+        type === 'IN'
+          ? 'You already have a punch-in recorded for today.'
+          : 'You already have a punch-out recorded for today.',
       );
     }
-  }
-
-  private async getDefaultSite(employeeId: string): Promise<string> {
-    const emp = await this.prisma.employee.findUniqueOrThrow({
-      where: { id: employeeId },
-      select: { defaultSiteId: true },
-    });
-    if (!emp.defaultSiteId) {
-      throw new BadRequestException('No site assigned to your account. Contact your Admin.');
-    }
-    return emp.defaultSiteId;
   }
 }
