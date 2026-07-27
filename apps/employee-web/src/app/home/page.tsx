@@ -71,10 +71,6 @@ function getDailyWish(name: string): string {
   const tpl  = DAILY_WISHES[(day - 1) % DAILY_WISHES.length];
   return tpl.replace(/\{Name\}/g, name).replace(/\{Time\}/g, time);
 }
-function isToday(isoStr: string) {
-  const d = new Date(isoStr), t = new Date();
-  return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
-}
 function fmtPunchDateTime(d: Date) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', weekday: 'short' })
     + ' | ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -202,12 +198,16 @@ export default function HomePage() {
       .then(r => { const d = r.data.data ?? r.data; setFaceRequired((d.require_face_detection ?? 'true') === 'true'); })
       .catch(() => {});
 
-    api.get('/punches/my/last')
-      .then(r => { const last = r.data.data; if (last?.type === 'IN' && isToday(last.timestampServer)) setNextPunch('OUT'); })
-      .catch(() => {});
-
     api.get('/punches/today')
-      .then(r => setTodayPunches(r.data.data ?? []))
+      .then(r => {
+        const punches: TodayPunch[] = r.data.data ?? [];
+        setTodayPunches(punches);
+        const hasIn  = punches.some(p => p.type === 'IN'  && p.approvalStatus !== 'REJECTED');
+        const hasOut = punches.some(p => p.type === 'OUT' && p.approvalStatus !== 'REJECTED');
+        if (hasIn && !hasOut) setNextPunch('OUT');
+        else if (!hasIn)      setNextPunch('IN');
+        // hasIn && hasOut → both done, button will be disabled below
+      })
       .catch(() => {});
 
   }, [router]);
@@ -819,6 +819,8 @@ export default function HomePage() {
       {/* Fixed punch button — sits above bottom nav */}
       {step === 'idle' && (() => {
         const gpsReady = !!gpsData && !gpsLoading;
+        const bothDone = todayPunches.some(p => p.type === 'IN' && p.approvalStatus !== 'REJECTED')
+                      && todayPunches.some(p => p.type === 'OUT' && p.approvalStatus !== 'REJECTED');
         return (
           <div style={{
             position: 'fixed', bottom: 'calc(56px + env(safe-area-inset-bottom))',
@@ -828,40 +830,55 @@ export default function HomePage() {
             background: 'linear-gradient(to top, #1e3a8a 70%, rgba(30,58,138,0))',
             zIndex: 40,
           }}>
-            <button
-              onClick={gpsReady ? startCamera : undefined}
-              disabled={!gpsReady}
-              style={{
+            {bothDone ? (
+              <button disabled style={{
                 width: '100%', padding: '18px 0', borderRadius: 16, border: 'none',
-                background: !gpsReady
-                  ? '#d1d5db'
-                  : nextPunch === 'IN'
-                    ? 'linear-gradient(135deg,#16a34a,#15803d)'
-                    : 'linear-gradient(135deg,#dc2626,#b91c1c)',
-                color: !gpsReady ? '#9ca3af' : '#fff',
+                background: '#d1fae5', color: '#065f46',
                 fontSize: 18, fontWeight: 700,
-                boxShadow: gpsReady ? '0 4px 18px rgba(0,0,0,0.18)' : 'none',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-                cursor: gpsReady ? 'pointer' : 'not-allowed',
-                transition: 'all 0.25s',
+                cursor: 'not-allowed',
               }}>
-              {gpsLoading ? (
-                <>
-                  <Spinner size={20} />
-                  <span>Getting Location…</span>
-                </>
-              ) : (
-                <>
-                  <span style={{ fontSize: 24 }}>{nextPunch === 'IN' ? '🟢' : '🔴'}</span>
-                  Punch {nextPunch}
-                </>
-              )}
-            </button>
-            <p style={{ textAlign: 'center', fontSize: 12, color: error === 'LOCATION_DENIED' ? '#fca5a5' : 'rgba(255,255,255,0.55)', marginTop: 6, marginBottom: 0 }}>
-              {error === 'LOCATION_DENIED' ? '📍 Turn ON location to punch' :
-               error === 'LOCATION_APPROXIMATE' ? '📍 Precise location required' :
-               !gpsReady ? 'Waiting for precise location…' : faceRequired ? 'Selfie + GPS required' : 'GPS required'}
-            </p>
+                <span style={{ fontSize: 24 }}>✅</span>
+                Attendance Complete
+              </button>
+            ) : (
+              <button
+                onClick={gpsReady ? startCamera : undefined}
+                disabled={!gpsReady}
+                style={{
+                  width: '100%', padding: '18px 0', borderRadius: 16, border: 'none',
+                  background: !gpsReady
+                    ? '#d1d5db'
+                    : nextPunch === 'IN'
+                      ? 'linear-gradient(135deg,#16a34a,#15803d)'
+                      : 'linear-gradient(135deg,#dc2626,#b91c1c)',
+                  color: !gpsReady ? '#9ca3af' : '#fff',
+                  fontSize: 18, fontWeight: 700,
+                  boxShadow: gpsReady ? '0 4px 18px rgba(0,0,0,0.18)' : 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+                  cursor: gpsReady ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.25s',
+                }}>
+                {gpsLoading ? (
+                  <>
+                    <Spinner size={20} />
+                    <span>Getting Location…</span>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 24 }}>{nextPunch === 'IN' ? '🟢' : '🔴'}</span>
+                    Punch {nextPunch}
+                  </>
+                )}
+              </button>
+            )}
+            {!bothDone && (
+              <p style={{ textAlign: 'center', fontSize: 12, color: error === 'LOCATION_DENIED' ? '#fca5a5' : 'rgba(255,255,255,0.55)', marginTop: 6, marginBottom: 0 }}>
+                {error === 'LOCATION_DENIED' ? '📍 Turn ON location to punch' :
+                 error === 'LOCATION_APPROXIMATE' ? '📍 Precise location required' :
+                 !gpsReady ? 'Waiting for precise location…' : faceRequired ? 'Selfie + GPS required' : 'GPS required'}
+              </p>
+            )}
           </div>
         );
       })()}
