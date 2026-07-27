@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { BottomNav } from '@/components/BottomNav';
 import { api } from '@/lib/api';
 import { cache } from '@/lib/cache';
 
@@ -710,31 +711,3 @@ export default function HistoryPage() {
   );
 }
 
-function BottomNav({ active }: { active: 'home' | 'leaves' | 'history' | 'profile' }) {
-  const items = [
-    { key: 'home',    href: '/home',    icon: '🏠', label: 'Attendance' },
-    { key: 'history', href: '/history', icon: '📋', label: 'History' },
-    { key: 'leaves',  href: '/leaves',  icon: '🌴', label: 'Leaves' },
-    { key: 'profile', href: '/profile', icon: '👤', label: 'Profile' },
-  ];
-  return (
-    <nav style={{
-      position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
-      width: '100%', maxWidth: 480, background: '#fff',
-      borderTop: '1px solid #e5e7eb', display: 'flex', zIndex: 50,
-      paddingBottom: 'env(safe-area-inset-bottom)',
-    }}>
-      {items.map(item => (
-        <Link key={item.key} href={item.href} style={{
-          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-          padding: '8px 0 6px', textDecoration: 'none',
-          color: active === item.key ? '#1d4ed8' : '#9ca3af',
-          borderTop: active === item.key ? '2px solid #1d4ed8' : '2px solid transparent',
-        }}>
-          <span style={{ fontSize: 18, lineHeight: 1 }}>{item.icon}</span>
-          <span style={{ fontSize: 10, fontWeight: 600, marginTop: 2 }}>{item.label}</span>
-        </Link>
-      ))}
-    </nav>
-  );
-}

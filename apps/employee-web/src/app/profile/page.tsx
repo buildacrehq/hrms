@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { BottomNav } from '@/components/BottomNav';
 import { api, clearTokens } from '@/lib/api';
 import { cache } from '@/lib/cache';
 
@@ -164,7 +165,10 @@ export default function ProfilePage() {
     }
 
     const holidaySet = new Set<string>();
-    psData.holidays.forEach((h: any) => holidaySet.add(h.date.slice(0, 10)));
+    psData.holidays.forEach((h: any) => {
+      const ds = h.date.slice(0, 10);
+      if (ds >= monthStart && ds <= monthEnd) holidaySet.add(ds);
+    });
 
     // Present days (approved IN punches)
     const presentSet = new Set<string>();
@@ -394,7 +398,7 @@ export default function ProfilePage() {
           <button onClick={() => { setShowPwd(v => !v); setPwdError(''); setPwdSuccess(''); }}
             style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px' }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>🔑 Change Password</span>
-            <span style={{ fontSize: 18, color: '#9ca3af' }}>{showPwd ? '›' : '›'}</span>
+            <span style={{ fontSize: 18, color: '#9ca3af', display: 'inline-block', transform: showPwd ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>›</span>
           </button>
 
           {showPwd && (
@@ -440,31 +444,3 @@ export default function ProfilePage() {
   );
 }
 
-function BottomNav({ active }: { active: 'home' | 'history' | 'leaves' | 'profile' }) {
-  const items = [
-    { key: 'home',    href: '/home',    icon: '🏠', label: 'Attendance' },
-    { key: 'history', href: '/history', icon: '📋', label: 'History' },
-    { key: 'leaves',  href: '/leaves',  icon: '🌴', label: 'Leaves' },
-    { key: 'profile', href: '/profile', icon: '👤', label: 'Profile' },
-  ];
-  return (
-    <nav style={{
-      position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
-      width: '100%', maxWidth: 480, background: '#fff',
-      borderTop: '1px solid #e5e7eb', display: 'flex', zIndex: 50,
-      paddingBottom: 'env(safe-area-inset-bottom)',
-    }}>
-      {items.map(item => (
-        <Link key={item.key} href={item.href} style={{
-          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-          padding: '8px 0 6px', textDecoration: 'none',
-          color: active === item.key ? '#1d4ed8' : '#9ca3af',
-          borderTop: active === item.key ? '2px solid #1d4ed8' : '2px solid transparent',
-        }}>
-          <span style={{ fontSize: 18, lineHeight: 1 }}>{item.icon}</span>
-          <span style={{ fontSize: 10, fontWeight: 600, marginTop: 2 }}>{item.label}</span>
-        </Link>
-      ))}
-    </nav>
-  );
-}
