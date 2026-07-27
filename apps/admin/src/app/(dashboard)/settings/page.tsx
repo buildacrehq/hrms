@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState, useEffect } from 'react';
-import { Building2, Clock, ShieldCheck, Camera, Bell, CalendarDays, Save, CheckCircle2, KeyRound } from 'lucide-react';
+import { Building2, Clock, ShieldCheck, Camera, Bell, CalendarDays, Save, CheckCircle2, KeyRound, Lock } from 'lucide-react';
 
 type LocalSettings = Record<string, string>;
 
@@ -49,6 +49,13 @@ const SECTIONS = [
     description: 'Monthly leave entitlements',
     keys: ['cl_days_per_month', 'fl_days_per_month'],
   },
+  {
+    id: 'security',
+    label: 'Security',
+    icon: Lock,
+    description: 'Session and login behaviour',
+    keys: ['auto_renew_sessions'],
+  },
 ] as const;
 
 const LABELS: Record<string, string> = {
@@ -71,6 +78,7 @@ const LABELS: Record<string, string> = {
   punchout_reminder_buffer:   'Punch-out Reminder Buffer (min)',
   cl_days_per_month:          'Casual Leave Days / Month',
   fl_days_per_month:          'Female Leave Days / Month',
+  auto_renew_sessions:        'Keep Employees Logged In',
 };
 
 const HINTS: Record<string, string> = {
@@ -81,6 +89,7 @@ const HINTS: Record<string, string> = {
   punchout_reminder_buffer:   'Minutes before shift end to send reminder',
   missing_punchout_handling:  'What to do when an employee forgets to punch out',
   auto_approve_normal:        'Automatically approve punches that fall within normal hours',
+  auto_renew_sessions:        'When on, employees stay logged in forever — their session auto-renews. When off, they must re-login every 30 days.',
 };
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -92,6 +101,36 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
       <span className="inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow transition-transform duration-200"
         style={{ transform: value ? 'translateX(22px)' : 'translateX(3px)', width: 18, height: 18, display: 'inline-block' }} />
     </button>
+  );
+}
+
+function ConfirmModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)' }}
+      onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+            <Lock size={18} className="text-amber-600" />
+          </div>
+          <h3 className="font-bold text-slate-900 text-base">Turn off auto-renew?</h3>
+        </div>
+        <p className="text-sm text-slate-600 mb-6">
+          Employees will need to log in again after their session expires (every 30 days). They won&apos;t be kicked out immediately — only on next session expiry.
+        </p>
+        <div className="flex gap-3">
+          <button onClick={onConfirm}
+            className="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
+            Yes, turn off
+          </button>
+          <button onClick={onCancel}
+            className="flex-1 border border-slate-200 text-slate-600 text-sm font-semibold py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+            Keep it on
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -158,6 +197,7 @@ export default function SettingsPage() {
   const qc = useQueryClient();
   const [local, setLocal]       = useState<LocalSettings>({});
   const [savedId, setSavedId]   = useState<string | null>(null);
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
 
   const settingsQ = useQuery({
     queryKey: ['settings'],
@@ -179,6 +219,19 @@ export default function SettingsPage() {
 
   const set = (key: string, val: string) => setLocal(l => ({ ...l, [key]: val }));
 
+  function handleToggle(key: string, newVal: boolean) {
+    if (key === 'auto_renew_sessions' && !newVal) {
+      setConfirmKey(key);
+      return;
+    }
+    set(key, newVal ? 'true' : 'false');
+  }
+
+  function confirmOff() {
+    if (confirmKey) set(confirmKey, 'false');
+    setConfirmKey(null);
+  }
+
   if (settingsQ.isLoading) {
     return (
       <div className="min-h-full bg-slate-50 flex items-center justify-center">
@@ -189,6 +242,8 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-full bg-slate-50">
+      {confirmKey && <ConfirmModal onConfirm={confirmOff} onCancel={() => setConfirmKey(null)} />}
+
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-8 py-5">
         <h1 className="text-xl font-bold text-slate-900">Settings</h1>
@@ -246,7 +301,7 @@ export default function SettingsPage() {
                         {HINTS[key] && <p className="text-xs text-slate-400 mt-0.5">{HINTS[key]}</p>}
                       </div>
                       {isBool ? (
-                        <Toggle value={val === 'true'} onChange={v => set(key, v ? 'true' : 'false')} />
+                        <Toggle value={val === 'true'} onChange={v => handleToggle(key, v)} />
                       ) : (
                         <input
                           value={val}

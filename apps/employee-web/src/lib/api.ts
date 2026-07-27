@@ -20,8 +20,10 @@ async function doRefresh(): Promise<string | null> {
   try {
     // Use a plain axios call (not `api`) to avoid triggering this interceptor again
     const res = await axios.post(`${BASE}/auth/refresh`, { refreshToken: rt });
-    const token = (res.data?.data?.accessToken ?? res.data?.accessToken) as string | undefined;
+    const d = res.data?.data ?? res.data;
+    const token = d?.accessToken as string | undefined;
     if (token) localStorage.setItem('accessToken', token);
+    if (d?.refreshToken) localStorage.setItem('refreshToken', d.refreshToken);
     return token ?? null;
   } catch {
     localStorage.removeItem('accessToken');

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Pencil, Check, X, KeyRound, CalendarDays,
   UserX, UserCheck, MapPin, Phone, User, Banknote,
-  Briefcase, Clock4, AlertTriangle,
+  Briefcase, Clock4, AlertTriangle, Monitor,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -24,6 +24,14 @@ type Employee = {
   defaultSite: { id: string; name: string } | null;
 };
 type Site = { id: string; name: string };
+type DeviceSession = {
+  id: string;
+  deviceBrowser: string;
+  deviceOs: string;
+  ipAddress: string | null;
+  lastSeenAt: string;
+  createdAt: string;
+};
 
 const AVATAR_COLORS = ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#be185d','#4338ca'];
 function avatarColor(name: string) {
@@ -155,6 +163,10 @@ export default function EmployeeDetailPage() {
   const siteQ = useQuery<Site[]>({
     queryKey: ['sites'],
     queryFn:  () => api.get('/admin/sites').then(r => r.data.data),
+  });
+  const devicesQ = useQuery<DeviceSession[]>({
+    queryKey: ['emp-devices', id],
+    queryFn:  () => api.get(`/admin/employees/${id}/device-sessions`).then(r => r.data.data),
   });
 
   const updateMut = useMutation({
@@ -331,6 +343,50 @@ export default function EmployeeDetailPage() {
                     <div className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Exited</div>
                     <div className="text-sm font-semibold text-slate-800 mt-0.5">{fmtDate(emp.exitedAt)}</div>
                   </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Device Sessions */}
+          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
+              <Monitor size={14} className="text-slate-500" />
+              <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide">Device Sessions</h2>
+              {devicesQ.data && devicesQ.data.length > 1 && (
+                <span className="ml-auto text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                  {devicesQ.data.length} devices
+                </span>
+              )}
+            </div>
+            <div className="px-6 py-4">
+              {devicesQ.isLoading && <p className="text-sm text-slate-400">Loading…</p>}
+              {devicesQ.data?.length === 0 && (
+                <p className="text-sm text-slate-400 italic">No sessions recorded yet — will appear after next login.</p>
+              )}
+              {devicesQ.data && devicesQ.data.length > 0 && (
+                <div className="space-y-3">
+                  {devicesQ.data.map(d => (
+                    <div key={d.id} className="flex items-start gap-3 py-3 border-b border-slate-50 last:border-0">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center shrink-0 mt-0.5">
+                        <Monitor size={14} className="text-blue-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-slate-800">{d.deviceBrowser || '—'}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">{d.deviceOs || '—'}</div>
+                        {d.ipAddress && <div className="text-xs font-mono text-slate-400 mt-0.5">{d.ipAddress}</div>}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs text-slate-400">Last seen</div>
+                        <div className="text-xs font-semibold text-slate-600 mt-0.5">
+                          {new Date(d.lastSeenAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {new Date(d.lastSeenAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

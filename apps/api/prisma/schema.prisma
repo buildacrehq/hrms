@@ -33,6 +33,7 @@ model Employee {
   leaveBalances    LeaveBalance[]
   regularizations  Regularization[]
   dayNotes         DayNote[]
+  deviceSessions   DeviceSession[]
   createdAt        DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -251,6 +252,24 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ─── Device Sessions ─────────────────────────────────────────────────────────
+
+// One row per unique device per employee. Upserted on every login.
+// Lets admin see multi-device usage and detect shared-credential abuse.
+model DeviceSession {
+  id            String   @id @default(cuid())
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id])
+  deviceBrowser String   @default("")
+  deviceOs      String   @default("")
+  ipAddress     String?
+  lastSeenAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@unique([employeeId, deviceBrowser, deviceOs])
+  @@index([employeeId])
 }
 
 // ─── OTP ─────────────────────────────────────────────────────────────────────

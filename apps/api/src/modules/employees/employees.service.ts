@@ -116,6 +116,14 @@ export class EmployeesService {
     });
   }
 
+  async getDeviceSessions(id: string) {
+    await this.assertExists(id);
+    return this.prisma.deviceSession.findMany({
+      where: { employeeId: id },
+      orderBy: { lastSeenAt: 'desc' },
+    });
+  }
+
   private async assertExists(id: string): Promise<void> {
     const emp = await this.prisma.employee.findUnique({ where: { id }, select: { id: true } });
     if (!emp) throw new NotFoundException(`Employee ${id} not found`);

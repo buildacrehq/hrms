@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
 import { Employee } from '@prisma/client';
+import { DeviceInfo } from '../../../common/utils/device.util';
 
 export interface EmployeeLoginResult extends TokenPair {
   employee: Omit<Employee, 'passwordHash'>;
@@ -15,7 +16,7 @@ export class EmployeeAuthService {
     private readonly tokens: TokenService,
   ) {}
 
-  async login(phone: string, password: string): Promise<EmployeeLoginResult> {
+  async login(phone: string, password: string, device?: DeviceInfo): Promise<EmployeeLoginResult> {
     const employee = await this.prisma.employee.findUnique({ where: { phone } });
 
     if (!employee || employee.status === 'DEACTIVATED') {
@@ -33,6 +34,16 @@ export class EmployeeAuthService {
       await this.prisma.employee.update({
         where: { id: employee.id },
         data: { consentAt: new Date() },
+      });
+    }
+
+    if (device) {
+      const browser = device.deviceBrowser ?? '';
+      const os = device.deviceOs ?? '';
+      await this.prisma.deviceSession.upsert({
+        where: { employeeId_deviceBrowser_deviceOs: { employeeId: employee.id, deviceBrowser: browser, deviceOs: os } },
+        update: { ipAddress: device.ipAddress, lastSeenAt: new Date() },
+        create: { employeeId: employee.id, deviceBrowser: browser, deviceOs: os, ipAddress: device.ipAddress },
       });
     }
 

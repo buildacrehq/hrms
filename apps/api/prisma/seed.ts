@@ -40,6 +40,8 @@ async function main() {
     { key: 'fl_days_per_month', value: '1' },
     // Data / Compliance
     { key: 'photo_retention_days', value: '730' },         // ~2 years
+    // Security
+    { key: 'auto_renew_sessions', value: 'true' },         // keep employees logged in forever
     // Display
     { key: 'company_name', value: 'Buildacre' },
     { key: 'default_weekly_off', value: 'SUNDAY' },        // day name

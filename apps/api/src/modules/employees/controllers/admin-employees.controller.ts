@@ -77,4 +77,11 @@ export class AdminEmployeesController {
   setPassword(@Param('id') id: string, @Body() dto: SetPasswordDto) {
     return this.service.setPassword(id, dto.password);
   }
+
+  @Get(':id/device-sessions')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'List device sessions for an employee' })
+  getDeviceSessions(@Param('id') id: string) {
+    return this.service.getDeviceSessions(id);
+  }
 }
