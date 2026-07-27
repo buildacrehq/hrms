@@ -168,6 +168,7 @@ export default function HomePage() {
   const [error, setError]         = useState('');
   const [faceRequired, setFaceRequired] = useState(true);
 
+  const [videoReady, setVideoReady] = useState(false);
   const videoRef     = useRef<HTMLVideoElement>(null);
   const streamRef    = useRef<MediaStream | null>(null);
   const capturingRef = useRef(false);
@@ -319,6 +320,7 @@ export default function HomePage() {
 
   const startCamera = useCallback(async () => {
     setError('');
+    setVideoReady(false);
     startGps(); // fresh location for every punch — don't reuse stale mount reading
     capturingRef.current = false;
     setPreviewUrl(null);
@@ -333,6 +335,7 @@ export default function HomePage() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(() => {});
+        setVideoReady(true);
       }
     } catch (err: any) {
       stopCamera();
@@ -497,9 +500,9 @@ export default function HomePage() {
         <div style={{ width: 30 }} />
       </div>
 
-      {/* Video */}
+      {/* Video — hidden until stream plays to avoid Android WebView control flash */}
       <video ref={videoRef} playsInline muted autoPlay
-        style={{ flex: 1, width: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)' }} />
+        style={{ flex: 1, width: '100%', objectFit: 'cover', display: 'block', transform: 'scaleX(-1)', visibility: videoReady ? 'visible' : 'hidden' }} />
 
       {/* Face status badge */}
       {faceRequired && faceInFrame !== null && (
