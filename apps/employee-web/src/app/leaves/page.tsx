@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { cache } from '@/lib/cache';
 
 function toLocalDateStr(d: Date = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -41,10 +42,11 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }>
 export default function LeavesPage() {
   const router = useRouter();
   const [tab, setTab]               = useState<'list' | 'apply'>('list');
-  const [types, setTypes]           = useState<LeaveType[]>([]);
-  const [requests, setRequests]     = useState<LeaveRequest[]>([]);
-  const [balances, setBalances]     = useState<LeaveBalance[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const cachedLeaves = cache.get<{ types: LeaveType[]; requests: LeaveRequest[]; balances: LeaveBalance[] }>('leaves');
+  const [types, setTypes]           = useState<LeaveType[]>(cachedLeaves?.types ?? []);
+  const [requests, setRequests]     = useState<LeaveRequest[]>(cachedLeaves?.requests ?? []);
+  const [balances, setBalances]     = useState<LeaveBalance[]>(cachedLeaves?.balances ?? []);
+  const [loading, setLoading]       = useState(!cachedLeaves);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState('');
   const [success, setSuccess]       = useState('');
@@ -60,10 +62,18 @@ export default function LeavesPage() {
     const token = localStorage.getItem('accessToken');
     if (!token) { router.replace('/login'); return; }
     Promise.all([
-      api.get('/leaves/types').then(r => setTypes(r.data.data ?? r.data)),
-      api.get('/leaves/my-requests').then(r => setRequests(r.data.data ?? r.data)),
-      api.get('/leaves/my-balances').then(r => setBalances(r.data.data ?? r.data)).catch(() => {}),
-    ]).catch(() => router.replace('/login'))
+      api.get('/leaves/types'),
+      api.get('/leaves/my-requests'),
+      api.get('/leaves/my-balances').catch(() => ({ data: { data: [] } })),
+    ]).then(([tRes, rRes, bRes]) => {
+      const types    = tRes.data.data ?? tRes.data;
+      const requests = rRes.data.data ?? rRes.data;
+      const balances = bRes.data.data ?? bRes.data ?? [];
+      setTypes(types);
+      setRequests(requests);
+      setBalances(balances);
+      cache.set('leaves', { types, requests, balances });
+    }).catch(() => router.replace('/login'))
       .finally(() => setLoading(false));
   }, [router]);
 

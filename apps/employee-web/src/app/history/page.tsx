@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { cache } from '@/lib/cache';
 
 type Punch = {
   id: string;
@@ -109,13 +110,14 @@ export default function HistoryPage() {
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth()); // 0-indexed
-  const [punches, setPunches] = useState<Punch[]>([]);
-  const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const [leaves,   setLeaves]   = useState<LeaveReq[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = cache.get<{ punches: Punch[]; holidays: Holiday[]; leaves: LeaveReq[]; regReqs: RegReq[]; month: string }>('history');
+  const [punches, setPunches] = useState<Punch[]>(cached?.punches ?? []);
+  const [holidays, setHolidays] = useState<Holiday[]>(cached?.holidays ?? []);
+  const [leaves,   setLeaves]   = useState<LeaveReq[]>(cached?.leaves ?? []);
+  const [loading, setLoading] = useState(!cached);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [viewTab, setViewTab] = useState<'list' | 'calendar' | 'corrections'>('list');
-  const [regReqs, setRegReqs] = useState<RegReq[]>([]);
+  const [regReqs, setRegReqs] = useState<RegReq[]>(cached?.regReqs ?? []);
 
   // Photo modal
   const [photoUrl,     setPhotoUrl]     = useState<string | null>(null);
@@ -145,7 +147,7 @@ export default function HistoryPage() {
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     if (!token) { router.replace('/login'); return; }
-    setLoading(true);
+    if (!cache.get('history') || (cache.get<{ month: string }>('history')?.month !== monthKey)) setLoading(true);
     Promise.all([
       api.get('/punches/me', { params: { month: monthKey } }),
       api.get('/holidays', { params: { year: String(year) } }).catch(() => ({ data: { data: [] } })),
@@ -153,10 +155,15 @@ export default function HistoryPage() {
       api.get('/regularizations/my-requests').catch(() => ({ data: [] })),
     ])
       .then(([pRes, hRes, lRes, rRes]) => {
-        setPunches(pRes.data.data?.punches ?? []);
-        setHolidays(hRes.data.data ?? hRes.data ?? []);
-        setLeaves(lRes.data.data ?? lRes.data ?? []);
-        setRegReqs([...(rRes.data.data ?? rRes.data ?? [])].sort((a: RegReq, b: RegReq) => b.createdAt.localeCompare(a.createdAt)));
+        const punches   = pRes.data.data?.punches ?? [];
+        const holidays  = hRes.data.data ?? hRes.data ?? [];
+        const leaves    = lRes.data.data ?? lRes.data ?? [];
+        const regReqs   = [...(rRes.data.data ?? rRes.data ?? [])].sort((a: RegReq, b: RegReq) => b.createdAt.localeCompare(a.createdAt));
+        setPunches(punches);
+        setHolidays(holidays);
+        setLeaves(leaves);
+        setRegReqs(regReqs);
+        cache.set('history', { punches, holidays, leaves, regReqs, month: monthKey });
       })
       .catch(() => router.replace('/login'))
       .finally(() => setLoading(false));

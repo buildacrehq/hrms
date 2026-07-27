@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, clearTokens } from '@/lib/api';
+import { cache } from '@/lib/cache';
 
 type Employee = {
   id: string;
@@ -40,8 +41,8 @@ function months(from: string) {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [employee, setEmployee] = useState<Employee | null>(null);
-  const [loading, setLoading]   = useState(true);
+  const [employee, setEmployee] = useState<Employee | null>(cache.get<Employee>('profile'));
+  const [loading, setLoading]   = useState(!cache.get('profile'));
 
   // Gender edit
   const [editGender,  setEditGender]  = useState(false);
@@ -78,7 +79,11 @@ export default function ProfilePage() {
     const token = localStorage.getItem('accessToken');
     if (!token) { router.replace('/login'); return; }
     api.get('/employees/me')
-      .then(r => setEmployee(r.data.data ?? r.data))
+      .then(r => {
+        const emp = r.data.data ?? r.data;
+        setEmployee(emp);
+        cache.set('profile', emp);
+      })
       .catch(() => router.replace('/login'))
       .finally(() => setLoading(false));
   }, [router]);
