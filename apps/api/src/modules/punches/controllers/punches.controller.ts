@@ -2,12 +2,15 @@ import {
   Controller,
   Post,
   Get,
+  Param,
   Body,
   Query,
   Req,
   UseGuards,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { parseDevice } from '../../../common/utils/device.util';
@@ -19,6 +22,8 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { PunchesService } from '../services/punches.service';
+import { StorageService } from '../../storage/storage.service';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { GetUploadUrlDto } from '../dto/get-upload-url.dto';
 import { CreatePunchDto } from '../dto/create-punch.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -33,7 +38,11 @@ import { JwtPayload } from '../../../common/types/jwt.types';
 @Roles('EMPLOYEE', 'SITE_MANAGER')
 @Controller('punches')
 export class PunchesController {
-  constructor(private readonly service: PunchesService) {}
+  constructor(
+    private readonly service: PunchesService,
+    private readonly storage: StorageService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Post('upload-url')
   @HttpCode(HttpStatus.OK)
@@ -69,5 +78,22 @@ export class PunchesController {
     @Query('cursor') cursor?: string,
   ) {
     return this.service.getMyPunches(user.sub, month, cursor);
+  }
+
+  @Get('today')
+  @ApiOperation({ summary: "Get today's punches for the current employee" })
+  async getToday(@CurrentUser() user: JwtPayload) {
+    return this.service.getTodayPunches(user.sub);
+  }
+
+  @Get(':id/photo-url')
+  @ApiOperation({ summary: "Get signed URL to view own punch photo" })
+  async getPhotoUrl(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    const punch = await this.prisma.punch.findUnique({ where: { id }, select: { employeeId: true, photoKey: true } });
+    if (!punch) throw new NotFoundException('Punch not found');
+    if (punch.employeeId !== user.sub) throw new ForbiddenException();
+    if (!punch.photoKey) return { signedUrl: null };
+    const signedUrl = await this.storage.getSignedViewUrl(punch.photoKey);
+    return { signedUrl };
   }
 }

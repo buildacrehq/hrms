@@ -111,6 +111,18 @@ export class PunchesService {
     };
   }
 
+  async getTodayPunches(employeeId: string) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    return this.prisma.punch.findMany({
+      where: { employeeId, timestampServer: { gte: todayStart, lte: todayEnd } },
+      orderBy: { timestampServer: 'asc' },
+      select: { id: true, type: true, timestampServer: true, address: true, accuracy: true, photoKey: true, approvalStatus: true },
+    });
+  }
+
   private async guardNoDuplicateToday(employeeId: string, type: PunchType): Promise<void> {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);

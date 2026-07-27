@@ -118,6 +118,45 @@ function makeFaceDetector(): any | null {
   catch { return null; }
 }
 
+type TodayPunchRowProps = { punch: { id: string; type: string; timestampServer: string; address: string; accuracy: number; photoKey: string; approvalStatus: string } };
+function TodayPunchRow({ punch }: TodayPunchRowProps) {
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!punch.photoKey) return;
+    api.get(`/punches/${punch.id}/photo-url`).then(r => setPhotoUrl(r.data.data?.signedUrl ?? null)).catch(() => {});
+  }, [punch.id, punch.photoKey]);
+  const time = new Date(punch.timestampServer).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const isIn = punch.type === 'IN';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      {photoUrl ? (
+        <img src={photoUrl} alt="punch photo"
+          style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover', flexShrink: 0, border: '2px solid rgba(255,255,255,0.2)' }} />
+      ) : (
+        <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(255,255,255,0.1)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+          {isIn ? '🟢' : '🔴'}
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: isIn ? '#4ade80' : '#f87171', background: isIn ? 'rgba(74,222,128,0.15)' : 'rgba(248,113,113,0.15)', padding: '2px 8px', borderRadius: 20 }}>
+            {isIn ? 'IN' : 'OUT'}
+          </span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{time}</span>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginLeft: 'auto' }}>
+            {punch.approvalStatus === 'APPROVED' ? '✓' : punch.approvalStatus === 'REJECTED' ? '✗' : '⏳'}
+          </span>
+        </div>
+        {punch.address && (
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            📍 {punch.address}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [employee, setEmployee]   = useState<Employee | null>(null);
@@ -137,7 +176,10 @@ export default function HomePage() {
 
   const isNativeApp = typeof window !== 'undefined' && !!(window as any).Capacitor;
 
+  type TodayPunch = { id: string; type: 'IN' | 'OUT'; timestampServer: string; address: string; accuracy: number; photoKey: string; approvalStatus: string };
+
   const [monthStats,   setMonthStats]   = useState<MonthStats | null>(null);
+  const [todayPunches, setTodayPunches] = useState<TodayPunch[]>([]);
   const [installReady, setInstallReady] = useState(false);
   const [faceInFrame,  setFaceInFrame]  = useState<boolean | null>(null);
   const [gpsData,      setGpsData]      = useState<GpsData | null>(null);
@@ -162,6 +204,10 @@ export default function HomePage() {
 
     api.get('/punches/my/last')
       .then(r => { const last = r.data.data; if (last?.type === 'IN' && isToday(last.timestampServer)) setNextPunch('OUT'); })
+      .catch(() => {});
+
+    api.get('/punches/today')
+      .then(r => setTodayPunches(r.data.data ?? []))
       .catch(() => {});
 
     const d = new Date();
@@ -377,6 +423,7 @@ export default function HomePage() {
       setNextPunch(wasIn ? 'OUT' : 'IN');
       setPreviewUrl(null);
       setStep('done');
+      api.get('/punches/today').then(r => setTodayPunches(r.data.data ?? [])).catch(() => {});
       doneTimerRef.current = setTimeout(() => { setStep('idle'); doneTimerRef.current = null; }, 3500);
     } catch (e: any) {
       setError(e?.response?.data?.message ?? 'Failed to submit. Please try again.');
@@ -747,6 +794,18 @@ export default function HomePage() {
               style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
               Retry Camera
             </button>
+          </div>
+        )}
+
+        {/* Today's Punches */}
+        {todayPunches.length > 0 && step === 'idle' && (
+          <div style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 16, padding: '14px 16px', marginBottom: 12, backdropFilter: 'blur(10px)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>Today</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {todayPunches.map(p => (
+                <TodayPunchRow key={p.id} punch={p} />
+              ))}
+            </div>
           </div>
         )}
 
