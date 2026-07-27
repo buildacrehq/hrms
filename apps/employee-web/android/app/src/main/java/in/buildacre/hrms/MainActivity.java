@@ -5,7 +5,6 @@ import android.os.Bundle;
 import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
 
-import androidx.activity.OnBackPressedCallback;
 import androidx.core.app.ActivityCompat;
 
 import com.getcapacitor.BridgeActivity;
@@ -24,19 +23,7 @@ public class MainActivity extends BridgeActivity {
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION,
         }, 100);
-
-        // Handle back gesture/button: go back in WebView if possible,
-        // otherwise minimize (show Android home) instead of closing the app.
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                if (getBridge() != null && getBridge().getWebView().canGoBack()) {
-                    getBridge().getWebView().goBack();
-                } else {
-                    moveTaskToBack(true);
-                }
-            }
-        });
+        // Back button is handled in JavaScript via @capacitor/app backButton listener
     }
 
     @Override

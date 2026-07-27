@@ -1,25 +1,33 @@
 'use client';
 import { useEffect } from 'react';
 
+// Handles Android back button inside the Capacitor WebView.
+// WebView.canGoBack() is unreliable for SPA (pushState) navigation, so we
+// use window.location.pathname to decide: if on /home → minimize, else go back.
 export function CapacitorBackHandler() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!(window as any).Capacitor) return;
 
-    let cleanup: (() => void) | undefined;
+    let listenerHandle: { remove: () => void } | null = null;
 
-    import('@capacitor/app').then(({ App }) => {
-      const handle = App.addListener('backButton', ({ canGoBack }: { canGoBack: boolean }) => {
-        if (canGoBack) {
-          window.history.back();
-        } else {
-          App.minimizeApp();
-        }
-      });
-      cleanup = () => { handle.then(h => h.remove()); };
-    });
+    (async () => {
+      try {
+        const { App } = await import('@capacitor/app');
+        listenerHandle = await App.addListener('backButton', () => {
+          const path = window.location.pathname;
+          if (path === '/home' || path === '/' || path === '') {
+            App.minimizeApp();
+          } else {
+            window.history.back();
+          }
+        });
+      } catch {
+        // not in a Capacitor context
+      }
+    })();
 
-    return () => { cleanup?.(); };
+    return () => { listenerHandle?.remove(); };
   }, []);
 
   return null;
