@@ -10,7 +10,6 @@ type Employee = {
 };
 type PunchType = 'IN' | 'OUT';
 type PunchStep = 'idle' | 'camera' | 'preview' | 'submitting' | 'done';
-type MonthStats = { present: number; absent: number; pending: number; workingDays: number };
 type GpsData   = { lat: number; lng: number; accuracy: number; address: string };
 
 function toLocalDateStr(d: Date = new Date()) {
@@ -180,7 +179,6 @@ export default function HomePage() {
 
   type TodayPunch = { id: string; type: 'IN' | 'OUT'; timestampServer: string; address: string; accuracy: number; photoKey: string; approvalStatus: string };
 
-  const [monthStats,   setMonthStats]   = useState<MonthStats | null>(null);
   const [todayPunches, setTodayPunches] = useState<TodayPunch[]>([]);
   const [installReady, setInstallReady] = useState(false);
   const [faceInFrame,  setFaceInFrame]  = useState<boolean | null>(null);
@@ -212,25 +210,6 @@ export default function HomePage() {
       .then(r => setTodayPunches(r.data.data ?? []))
       .catch(() => {});
 
-    const d = new Date();
-    const monthKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    api.get('/punches/me', { params: { month: monthKey } })
-      .then(r => {
-        const punches: any[] = r.data.data?.punches ?? [];
-        const presentSet = new Set<string>();
-        let pending = 0;
-        punches.forEach((p: any) => {
-          const ds = toLocalDateStr(new Date(p.timestampServer));
-          if (p.type === 'IN' && p.approvalStatus === 'APPROVED') presentSet.add(ds);
-          if (p.approvalStatus === 'PENDING') pending++;
-        });
-        let workingDays = 0;
-        for (let i = 1; i <= d.getDate(); i++) {
-          if (new Date(d.getFullYear(), d.getMonth(), i).getDay() !== 0) workingDays++;
-        }
-        setMonthStats({ present: presentSet.size, absent: Math.max(0, workingDays - presentSet.size), pending, workingDays });
-      })
-      .catch(() => {});
   }, [router]);
 
   useEffect(() => {
@@ -937,10 +916,3 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return (
-    <div style={{ background: '#fff', margin: '0 16px 12px', borderRadius: 16, boxShadow: '0 1px 6px rgba(0,0,0,0.07)', ...style }}>
-      {children}
-    </div>
-  );
-}
