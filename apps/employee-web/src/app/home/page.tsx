@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, clearTokens } from '@/lib/api';
+import { openLocationSettings } from '@/lib/native-settings';
 
 type Employee = {
   id: string; name: string; phone: string; defaultSite?: { id: string; name: string } | null;
@@ -410,12 +411,18 @@ export default function HomePage() {
       </div>
       <div style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6, marginBottom: 28 }}>
         {error === 'LOCATION_OFF'
-          ? <>Your phone's GPS is off.<br /><br /><strong>Go to Settings → Location</strong> and turn it on, then tap Try Again.</>
+          ? 'Your phone\'s GPS is off. Turn it on to punch in or out.'
           : isNativeApp
             ? <>Location access is required to punch.<br /><br /><strong>Go to Settings → Apps → BA Workforce → Permissions → Location → Allow</strong></>
             : <>Location access is required to punch.<br /><br /><strong>Tap the 🔒 lock icon → Permissions → Location → Allow</strong></>
         }
       </div>
+      {error === 'LOCATION_OFF' && isNativeApp && (
+        <button onClick={openLocationSettings}
+          style={{ width: '100%', padding: '16px', borderRadius: 14, border: 'none', background: '#dc2626', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+          Open Location Settings
+        </button>
+      )}
       <button onClick={startGps}
         style={{ width: '100%', padding: '16px', borderRadius: 14, border: 'none', background: '#1d4ed8', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
         Try Again
@@ -690,12 +697,17 @@ export default function HomePage() {
             <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>📍</div>
             <div style={{ fontWeight: 700, color: '#dc2626', fontSize: 14, textAlign: 'center', marginBottom: 6 }}>GPS is Turned Off</div>
             <div style={{ color: '#7f1d1d', fontSize: 13, lineHeight: 1.6, textAlign: 'center', marginBottom: 14 }}>
-              Your phone's location is off. Go to{' '}
-              <strong>Settings → Location</strong> and turn it on, then tap Retry.
+              Your phone's GPS is off. Turn it on to punch in or out.
             </div>
+            {isNativeApp && (
+              <button onClick={openLocationSettings}
+                style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 8 }}>
+                Open Location Settings
+              </button>
+            )}
             <button onClick={startGps}
-              style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
-              Retry Location
+              style={{ width: '100%', padding: '13px', borderRadius: 12, border: 'none', background: isNativeApp ? '#f3f4f6' : '#dc2626', color: isNativeApp ? '#374151' : '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+              Retry
             </button>
           </div>
         )}
