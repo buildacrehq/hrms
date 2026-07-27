@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { CapacitorBackHandler } from '@/components/CapacitorBackHandler';
 
 export const metadata: Metadata = {
   title: 'BA Workforce',
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body style={{ margin: 0, fontFamily: 'system-ui, sans-serif', background: '#f8fafc' }}>
+        <CapacitorBackHandler />
         {children}
       </body>
     </html>
