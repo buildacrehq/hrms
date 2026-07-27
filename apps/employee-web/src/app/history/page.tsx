@@ -9,6 +9,7 @@ type Punch = {
   timestampServer: string;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
   address: string;
+  photoKey?: string | null;
   site: { name: string } | null;
 };
 
@@ -114,6 +115,24 @@ export default function HistoryPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [viewTab, setViewTab] = useState<'list' | 'calendar' | 'corrections'>('list');
   const [regReqs, setRegReqs] = useState<RegReq[]>([]);
+
+  // Photo modal
+  const [photoUrl,     setPhotoUrl]     = useState<string | null>(null);
+  const [photoLoading, setPhotoLoading] = useState<string | null>(null); // punchId being loaded
+
+  async function viewPhoto(punchId: string) {
+    if (photoLoading) return;
+    setPhotoLoading(punchId);
+    try {
+      const res = await api.get(`/punches/${punchId}/photo-url`);
+      const url = res.data?.data?.signedUrl ?? res.data?.signedUrl;
+      if (url) setPhotoUrl(url);
+    } catch {
+      // silently ignore
+    } finally {
+      setPhotoLoading(null);
+    }
+  }
 
   // Regularization modal
   const [regForm,   setRegForm]   = useState<RegForm | null>(null);
@@ -557,6 +576,16 @@ export default function HistoryPage() {
                             padding: '2px 7px', borderRadius: 10 }}>
                             {p.approvalStatus}
                           </span>
+                          {p.photoKey && (
+                            <button
+                              onClick={() => viewPhoto(p.id)}
+                              disabled={photoLoading === p.id}
+                              style={{ border: 'none', background: '#f0f9ff', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, fontSize: 15 }}>
+                              {photoLoading === p.id ? (
+                                <div style={{ width: 12, height: 12, border: '2px solid #bfdbfe', borderTop: '2px solid #1d4ed8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                              ) : '📷'}
+                            </button>
+                          )}
                         </div>
                       ))}
                       {day.punches[0]?.site && (
@@ -582,6 +611,20 @@ export default function HistoryPage() {
       </div>}
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+      {/* Photo modal */}
+      {photoUrl && (
+        <div
+          onClick={() => setPhotoUrl(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+          <img
+            src={photoUrl}
+            alt="Punch photo"
+            style={{ maxWidth: '100%', maxHeight: '80dvh', borderRadius: 12, objectFit: 'contain' }}
+          />
+          <div style={{ marginTop: 16, fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>Tap anywhere to close</div>
+        </div>
+      )}
 
       {/* Regularization modal */}
       {regForm && (
