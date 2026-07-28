@@ -305,13 +305,37 @@ class _ClockWidgetState extends State<_ClockWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      DateFormat('hh:mm:ss a').format(_now),
-      style: const TextStyle(
-        color: Colors.white, fontSize: 44, fontWeight: FontWeight.w800,
-        letterSpacing: -2, height: 1,
-        fontFeatures: [FontFeature.tabularFigures()],
-      ),
+    final hhmm = DateFormat('hh:mm').format(_now);
+    final ampm = DateFormat('a').format(_now);
+    final ss   = DateFormat('ss').format(_now);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(hhmm, style: const TextStyle(
+          color: Colors.white, fontSize: 56, fontWeight: FontWeight.w800,
+          letterSpacing: -2, height: 1,
+          fontFeatures: [FontFeature.tabularFigures()],
+        )),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6, left: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(ampm, style: const TextStyle(
+                color: Color(0xCCFFFFFF), fontSize: 16, fontWeight: FontWeight.w700,
+                letterSpacing: 0.5, height: 1,
+              )),
+              const SizedBox(height: 2),
+              Text(':$ss', style: const TextStyle(
+                color: Color(0x80FFFFFF), fontSize: 14, fontWeight: FontWeight.w600,
+                letterSpacing: 0, height: 1,
+                fontFeatures: [FontFeature.tabularFigures()],
+              )),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
