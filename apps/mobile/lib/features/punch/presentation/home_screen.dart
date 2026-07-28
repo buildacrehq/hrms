@@ -565,13 +565,22 @@ class _PunchButtonArea extends StatelessWidget {
       );
     }
     if (bothDone) {
-      return _shell(
-        color: const Color(0xFFd1fae5),
-        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 26),
-          SizedBox(width: 10),
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        decoration: BoxDecoration(
+          color: const Color(0x1A4ade80),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0x554ade80)),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.check_circle_rounded, color: Color(0xFF4ade80), size: 24),
+          const SizedBox(width: 10),
           Text('Attendance Complete',
-            style: TextStyle(color: Color(0xFF065f46), fontSize: 18, fontWeight: FontWeight.bold)),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            )),
         ]),
       );
     }
