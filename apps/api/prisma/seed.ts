@@ -75,13 +75,13 @@ async function main() {
     },
   });
 
-  // Women's Wellness Leave: 1/month, female only, expires end of month (use-it-or-lose-it)
+  // Feminine Leave: 1/month, female only, expires end of month (use-it-or-lose-it)
   await prisma.leaveType.upsert({
     where: { id: 'lt-wellness' },
-    update: { name: "Women's Wellness Leave", monthlyExpiry: true },
+    update: { name: 'Feminine Leave', monthlyExpiry: true },
     create: {
       id: 'lt-wellness',
-      name: "Women's Wellness Leave",
+      name: 'Feminine Leave',
       daysEntitled: 12,
       scope: 'FEMALE_ONLY',
       paid: true,
@@ -153,7 +153,7 @@ async function main() {
     },
   });
 
-  console.log('✓ Leave types seeded (Casual Leave, Women\'s Wellness, Comp Off, Unpaid Leave, Other)');
+  console.log('✓ Leave types seeded (Casual Leave, Feminine Leave, Comp Off, Unpaid Leave, Other)');
 
   // ── Default admin account ───────────────────────────────────────────────────
   // IMPORTANT: change this password before any real deployment.
