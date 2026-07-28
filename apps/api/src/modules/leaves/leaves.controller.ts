@@ -85,6 +85,14 @@ export class LeavesController {
     return this.service.approveRequest(id, user.sub);
   }
 
+  @Delete('requests/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Admin removes a leave request (restores balance if approved)' })
+  removeRequest(@Param('id') id: string) {
+    return this.service.cancelRequestAdmin(id);
+  }
+
   @Post('requests/:id/reject')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })

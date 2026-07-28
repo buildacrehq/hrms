@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../data/profile_repository.dart';
 import '../../auth/domain/auth_notifier.dart';
+
+const _kGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0xFF1e3a8a), Color(0xFF1d4ed8), Color(0xFF1e40af)],
+  stops: [0.0, 0.45, 1.0],
+);
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -16,9 +24,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _loading = true;
   String? _error;
 
-  // Payslip state
   late int _psYear;
-  late int _psMonth; // 1-indexed
+  late int _psMonth;
   Map<String, dynamic>? _payslipData;
   bool _psLoading = false;
   bool _psExpanded = false;
@@ -27,9 +34,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    // Default to last month (current month is not yet complete)
     final lastMonth = DateTime(now.year, now.month - 1);
-    _psYear = lastMonth.year;
+    _psYear  = lastMonth.year;
     _psMonth = lastMonth.month;
     _loadProfile();
   }
@@ -51,7 +57,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final data = await ref.read(profileRepositoryProvider).getPayslipData(_psYear, _psMonth);
       if (!mounted) return;
       setState(() { _payslipData = data; _psLoading = false; });
-    } catch (e) {
+    } catch (_) {
       if (mounted) setState(() => _psLoading = false);
     }
   }
@@ -71,8 +77,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   void _nextPsMonth() {
     final now = DateTime.now();
-    final canGoForward = !(_psYear == now.year && _psMonth == now.month - 1);
-    if (!canGoForward) return;
+    if (_psYear == now.year && _psMonth == now.month - 1) return;
     setState(() {
       if (_psMonth == 12) { _psMonth = 1; _psYear++; } else { _psMonth++; }
       _payslipData = null;
@@ -80,232 +85,286 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _loadPayslip();
   }
 
-  // Payslip calculations
   _PayslipStats _computeStats(Map<String, dynamic> data, int year, int month) {
-    final punches = (data['punches'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    final leaves  = (data['leaves']  as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final punches  = (data['punches']  as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final leaves   = (data['leaves']   as List?)?.cast<Map<String, dynamic>>() ?? [];
     final holidays = (data['holidays'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
-    // Working days = days in month excluding Sundays
     final lastDay = DateUtils.getDaysInMonth(year, month);
     var workingDays = 0;
     for (var d = 1; d <= lastDay; d++) {
       if (DateTime(year, month, d).weekday != DateTime.sunday) workingDays++;
     }
-
-    // Holidays in this month
-    final monthStart = '$year-${month.toString().padLeft(2, '0')}-01';
-    final monthEnd = '$year-${month.toString().padLeft(2, '0')}-${lastDay.toString().padLeft(2, '0')}';
+    final monthStart = '$year-${month.toString().padLeft(2,'0')}-01';
+    final monthEnd   = '$year-${month.toString().padLeft(2,'0')}-${lastDay.toString().padLeft(2,'0')}';
     final holidayDates = <String>{};
     for (final h in holidays) {
       final ds = (h['date'] as String? ?? '').length >= 10 ? (h['date'] as String).substring(0, 10) : '';
       if (ds.compareTo(monthStart) >= 0 && ds.compareTo(monthEnd) <= 0) holidayDates.add(ds);
     }
-
-    // Present days (non-rejected IN punches)
     final presentDates = <String>{};
     for (final p in punches) {
       if (p['type'] == 'IN' && p['approvalStatus'] != 'REJECTED') {
         final ts = DateTime.tryParse(p['timestampServer'] as String? ?? '')?.toLocal();
         if (ts != null) {
-          presentDates.add('${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')}');
+          presentDates.add('${ts.year}-${ts.month.toString().padLeft(2,'0')}-${ts.day.toString().padLeft(2,'0')}');
         }
       }
     }
-
-    // Leave days (approved leaves overlapping this month)
     var leaveDays = 0;
     for (final lr in leaves) {
       if (lr['status'] == 'APPROVED') {
-        final start = (lr['startDate'] as String? ?? '').length >= 10 ? (lr['startDate'] as String).substring(0, 10) : '';
-        final end   = (lr['endDate']   as String? ?? '').length >= 10 ? (lr['endDate']   as String).substring(0, 10) : '';
-        if (start.isEmpty || end.isEmpty) continue;
-        var cursor = DateTime.parse(start);
-        final endDt = DateTime.parse(end);
+        final start = (lr['fromDate'] ?? lr['startDate'] as String? ?? '').toString();
+        final end   = (lr['toDate']   ?? lr['endDate']   as String? ?? '').toString();
+        if (start.length < 10 || end.length < 10) continue;
+        var cursor = DateTime.parse(start.substring(0, 10));
+        final endDt = DateTime.parse(end.substring(0, 10));
         while (!cursor.isAfter(endDt)) {
-          final ds = '${cursor.year}-${cursor.month.toString().padLeft(2, '0')}-${cursor.day.toString().padLeft(2, '0')}';
-          if (ds.compareTo(monthStart) >= 0 && ds.compareTo(monthEnd) <= 0 && cursor.weekday != DateTime.sunday) {
-            leaveDays++;
-          }
+          final ds = '${cursor.year}-${cursor.month.toString().padLeft(2,'0')}-${cursor.day.toString().padLeft(2,'0')}';
+          if (ds.compareTo(monthStart) >= 0 && ds.compareTo(monthEnd) <= 0 && cursor.weekday != DateTime.sunday) leaveDays++;
           cursor = cursor.add(const Duration(days: 1));
         }
       }
     }
-
     final presentDays = presentDates.length;
     final holidayDays = holidayDates.length;
     final absentDays  = (workingDays - presentDays - leaveDays - holidayDays).clamp(0, workingDays);
-
-    return _PayslipStats(
-      workingDays: workingDays,
-      presentDays: presentDays,
-      leaveDays: leaveDays,
-      holidayDays: holidayDays,
-      absentDays: absentDays,
-    );
+    return _PayslipStats(workingDays: workingDays, presentDays: presentDays, leaveDays: leaveDays, holidayDays: holidayDays, absentDays: absentDays);
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final topPad = MediaQuery.of(context).padding.top;
+
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF1e3a8a),
+        body: const Center(child: CircularProgressIndicator(color: Colors.white)),
+      );
+    }
+    if (_error != null) {
+      return Scaffold(
+        body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.cloud_off, size: 48, color: cs.error),
+          const SizedBox(height: 12),
+          Text(_error!, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: _loadProfile, child: const Text('Retry')),
+        ])),
+      );
+    }
+
+    final emp         = _employee!;
+    final name        = emp['name']        as String? ?? '—';
+    final phone       = emp['phone']       as String? ?? '—';
+    final designation = emp['designation'] as String? ?? '';
+    final site        = (emp['defaultSite'] as Map<String, dynamic>?)?['name'] as String? ?? '';
+    final dob         = emp['dob']         as String?;
+    final gender      = emp['gender']      as String?;
+    final initials    = name.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase();
 
     return Scaffold(
-      appBar: AppBar(
-        surfaceTintColor: Colors.transparent,
-        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadProfile),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.cloud_off, size: 48, color: cs.error),
-                  const SizedBox(height: 12),
-                  Text(_error!, textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  FilledButton(onPressed: _loadProfile, child: const Text('Retry')),
-                ]))
-              : RefreshIndicator(
-                  onRefresh: _loadProfile,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-                    children: [
-                      _ProfileCard(employee: _employee!),
-                      const SizedBox(height: 16),
-                      _PayslipSection(
-                        employee: _employee!,
-                        year: _psYear,
-                        month: _psMonth,
-                        expanded: _psExpanded,
-                        loading: _psLoading,
-                        data: _payslipData,
-                        onToggle: _togglePayslip,
-                        onPrev: _prevPsMonth,
-                        onNext: _nextPsMonth,
-                        computeStats: _computeStats,
-                      ),
-                      const SizedBox(height: 16),
-                      _SignOutButton(onPressed: () => ref.read(authNotifierProvider.notifier).logout()),
-                    ],
+      backgroundColor: cs.surface,
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+        ),
+        child: RefreshIndicator(
+          onRefresh: _loadProfile,
+          child: CustomScrollView(slivers: [
+            // ── Gradient hero header ──────────────────────────────────────────
+            SliverToBoxAdapter(child: Container(
+              decoration: const BoxDecoration(gradient: _kGradient),
+              padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, 32),
+              child: Column(children: [
+                Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  IconButton(
+                    icon: const Icon(Icons.refresh, color: Colors.white70, size: 20),
+                    onPressed: _loadProfile,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+                // Avatar
+                Container(
+                  width: 80, height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withAlpha(30),
+                    border: Border.all(color: Colors.white.withAlpha(80), width: 2.5),
+                  ),
+                  child: Center(child: Text(
+                    initials.isNotEmpty ? initials : '?',
+                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                  )),
+                ),
+                const SizedBox(height: 14),
+                Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+                if (designation.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(designation, style: const TextStyle(fontSize: 13, color: Color(0xB3FFFFFF))),
+                ],
+                if (site.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(20),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white.withAlpha(40)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.location_on, size: 12, color: Color(0xB3FFFFFF)),
+                      const SizedBox(width: 4),
+                      Text(site, style: const TextStyle(fontSize: 12, color: Color(0xCCFFFFFF))),
+                    ]),
+                  ),
+                ],
+              ]),
+            )),
+
+            // ── Content ───────────────────────────────────────────────────────
+            SliverToBoxAdapter(child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+                // Contact info card
+                _SectionCard(children: [
+                  _InfoTile(icon: Icons.phone_outlined, label: 'Phone', value: '+91 $phone'),
+                  if (gender != null && gender.isNotEmpty)
+                    _InfoTile(icon: Icons.person_outline, label: 'Gender', value: _fmtGender(gender)),
+                  if (dob != null && dob.isNotEmpty)
+                    _InfoTile(icon: Icons.cake_outlined, label: 'Date of Birth', value: _fmtDate(dob), isLast: true),
+                  if (dob == null || dob.isEmpty)
+                    _InfoTile(icon: Icons.cake_outlined, label: 'Date of Birth', value: '—', isLast: true),
+                ]),
+                const SizedBox(height: 16),
+
+                // Payslip section
+                _PayslipCard(
+                  year: _psYear, month: _psMonth,
+                  expanded: _psExpanded, loading: _psLoading,
+                  data: _payslipData, employee: emp,
+                  onToggle: _togglePayslip,
+                  onPrev: _prevPsMonth,
+                  onNext: _nextPsMonth,
+                  computeStats: _computeStats,
+                ),
+                const SizedBox(height: 20),
+
+                // Sign out
+                OutlinedButton.icon(
+                  onPressed: () => ref.read(authNotifierProvider.notifier).logout(),
+                  icon: const Icon(Icons.logout_rounded, color: Colors.red, size: 18),
+                  label: const Text('Sign Out', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                 ),
+              ]),
+            )),
+          ]),
+        ),
+      ),
     );
+  }
+
+  String _fmtDate(String d) {
+    try { return DateFormat('dd MMMM yyyy').format(DateTime.parse(d)); }
+    catch (_) { return d.length >= 10 ? d.substring(0, 10) : d; }
+  }
+
+  String _fmtGender(String g) {
+    return switch (g.toUpperCase()) {
+      'MALE'   => 'Male',
+      'FEMALE' => 'Female',
+      'OTHER'  => 'Other',
+      _        => g,
+    };
   }
 }
 
-// ── Profile card ─────────────────────────────────────────────────────────────
+// ── Section card ─────────────────────────────────────────────────────────────
 
-class _ProfileCard extends StatelessWidget {
-  const _ProfileCard({required this.employee});
-  final Map<String, dynamic> employee;
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({required this.children});
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final name = employee['name'] as String? ?? '—';
-    final phone = employee['phone'] as String? ?? '—';
-    final designation = employee['designation'] as String? ?? '';
-    final site = (employee['defaultSite'] as Map<String, dynamic>?)?['name'] as String? ?? '—';
-    final initials = name.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase();
-    final dob = employee['dob'] as String?;
-    final gender = employee['gender'] as String?;
-
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: cs.outlineVariant),
       ),
-      child: Column(children: [
-        CircleAvatar(
-          radius: 36,
-          backgroundColor: cs.primaryContainer,
-          child: Text(initials.isNotEmpty ? initials : '?',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: cs.onPrimaryContainer)),
-        ),
-        const SizedBox(height: 12),
-        Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        if (designation.isNotEmpty)
-          Text(designation, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-        const SizedBox(height: 16),
-        const Divider(),
-        const SizedBox(height: 8),
-        _InfoRow(Icons.phone_outlined, 'Phone', '+91 $phone'),
-        _InfoRow(Icons.location_on_outlined, 'Site', site),
-        if (dob != null && dob.isNotEmpty)
-          _InfoRow(Icons.cake_outlined, 'Date of Birth', _fmtDate(dob)),
-        if (gender != null && gender.isNotEmpty)
-          _InfoRow(Icons.person_outline, 'Gender', gender),
-      ]),
+      child: Column(children: children),
     );
-  }
-
-  String _fmtDate(String d) {
-    try {
-      return DateFormat('dd MMMM yyyy').format(DateTime.parse(d));
-    } catch (_) {
-      return d.length >= 10 ? d.substring(0, 10) : d;
-    }
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow(this.icon, this.label, this.value);
+class _InfoTile extends StatelessWidget {
+  const _InfoTile({required this.icon, required this.label, required this.value, this.isLast = false});
   final IconData icon;
   final String label;
   final String value;
+  final bool isLast;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(children: [
-        Icon(icon, size: 16, color: cs.onSurfaceVariant),
-        const SizedBox(width: 10),
-        Text(label, style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-        const Spacer(),
-        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-      ]),
-    );
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Row(children: [
+          Container(
+            width: 34, height: 34,
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withAlpha(80),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 16, color: cs.primary),
+          ),
+          const SizedBox(width: 12),
+          Text(label, style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+      if (!isLast) Divider(height: 1, indent: 16, color: cs.outlineVariant),
+    ]);
   }
 }
 
-// ── Payslip section ───────────────────────────────────────────────────────────
+// ── Payslip card ─────────────────────────────────────────────────────────────
 
-class _PayslipSection extends StatelessWidget {
-  const _PayslipSection({
-    required this.employee,
-    required this.year,
-    required this.month,
-    required this.expanded,
-    required this.loading,
-    required this.data,
-    required this.onToggle,
-    required this.onPrev,
-    required this.onNext,
+class _PayslipCard extends StatelessWidget {
+  const _PayslipCard({
+    required this.year, required this.month,
+    required this.expanded, required this.loading,
+    required this.data, required this.employee,
+    required this.onToggle, required this.onPrev, required this.onNext,
     required this.computeStats,
   });
-  final Map<String, dynamic> employee;
-  final int year;
-  final int month;
-  final bool expanded;
-  final bool loading;
+  final int year, month;
+  final bool expanded, loading;
   final Map<String, dynamic>? data;
-  final VoidCallback onToggle;
-  final VoidCallback onPrev;
-  final VoidCallback onNext;
+  final Map<String, dynamic> employee;
+  final VoidCallback onToggle, onPrev, onNext;
   final _PayslipStats Function(Map<String, dynamic>, int, int) computeStats;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final monthLabel = DateFormat('MMMM yyyy').format(DateTime(year, month));
     final now = DateTime.now();
-    final canGoForward = !(year == now.year && month == now.month - 1);
+    final canForward = !(year == now.year && month == now.month - 1);
+    final monthLabel = DateFormat('MMMM yyyy').format(DateTime(year, month));
 
     return Container(
       decoration: BoxDecoration(
@@ -313,16 +372,22 @@ class _PayslipSection extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: cs.outlineVariant),
       ),
-      child: Column(children: [
-        // Header
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         InkWell(
           onTap: onToggle,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(children: [
-              Icon(Icons.receipt_long_outlined, color: cs.primary, size: 20),
-              const SizedBox(width: 10),
+              Container(
+                width: 34, height: 34,
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer.withAlpha(80),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.receipt_long_outlined, size: 16, color: cs.primary),
+              ),
+              const SizedBox(width: 12),
               const Text('Payslip', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const Spacer(),
               AnimatedRotation(
@@ -333,79 +398,87 @@ class _PayslipSection extends StatelessWidget {
             ]),
           ),
         ),
-
         if (expanded) ...[
           Divider(height: 1, color: cs.outlineVariant),
-
           // Month picker
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Row(children: [
-              IconButton(icon: const Icon(Icons.chevron_left), onPressed: loading ? null : onPrev),
+              IconButton(icon: const Icon(Icons.chevron_left, size: 20), onPressed: loading ? null : onPrev),
               Expanded(child: Text(monthLabel, textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
               IconButton(
-                icon: Icon(Icons.chevron_right, color: canGoForward ? null : cs.onSurface.withAlpha(60)),
-                onPressed: (loading || !canGoForward) ? null : onNext,
+                icon: Icon(Icons.chevron_right, size: 20, color: canForward ? null : cs.onSurface.withAlpha(50)),
+                onPressed: (loading || !canForward) ? null : onNext,
               ),
             ]),
           ),
-
           if (loading)
-            const Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator())
-          else if (data != null) ...[
+            const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator()))
+          else if (data != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               child: Builder(builder: (ctx) {
                 final stats = computeStats(data!, year, month);
                 final salary = (employee['salary'] as num?)?.toDouble();
-                final netSalary = salary != null && stats.workingDays > 0
+                final net = salary != null && stats.workingDays > 0
                     ? salary * (stats.presentDays + stats.leaveDays + stats.holidayDays) / stats.workingDays
                     : null;
-
                 return Column(children: [
-                  _StatsGrid(stats: stats),
+                  // Stats row
+                  Row(children: [
+                    _PsChip(label: 'Working', value: stats.workingDays, color: Colors.blue),
+                    const SizedBox(width: 8),
+                    _PsChip(label: 'Present', value: stats.presentDays, color: Colors.green),
+                    const SizedBox(width: 8),
+                    _PsChip(label: 'Absent', value: stats.absentDays, color: Colors.red),
+                  ]),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    _PsChip(label: 'Leaves', value: stats.leaveDays, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    _PsChip(label: 'Holidays', value: stats.holidayDays, color: Colors.purple),
+                    const Spacer(),
+                  ]),
                   if (salary != null) ...[
-                    const SizedBox(height: 16),
-                    _SalaryCard(gross: salary, net: netSalary),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF1e3a8a), Color(0xFF1d4ed8)],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(children: [
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          const Text('Gross Salary', style: TextStyle(fontSize: 11, color: Color(0xB3FFFFFF))),
+                          Text('₹ ${NumberFormat('#,##,##0', 'en_IN').format(salary)}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+                        ])),
+                        if (net != null) ...[
+                          Container(width: 1, height: 36, color: Colors.white24),
+                          const SizedBox(width: 14),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('Net Payable', style: TextStyle(fontSize: 11, color: Color(0xB3FFFFFF))),
+                            Text('₹ ${NumberFormat('#,##,##0', 'en_IN').format(net.roundToDouble())}',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF86efac))),
+                          ])),
+                        ],
+                      ]),
+                    ),
                   ],
                 ]);
               }),
             ),
-          ],
         ],
       ]),
     );
   }
 }
 
-class _StatsGrid extends StatelessWidget {
-  const _StatsGrid({required this.stats});
-  final _PayslipStats stats;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = [
-      ('Working Days', stats.workingDays, Colors.blue),
-      ('Present', stats.presentDays, Colors.green),
-      ('Absent', stats.absentDays, Colors.red),
-      ('Holidays', stats.holidayDays, Colors.purple),
-      ('Leaves', stats.leaveDays, Colors.orange),
-    ];
-    return GridView.count(
-      crossAxisCount: 3,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 10,
-      mainAxisSpacing: 10,
-      childAspectRatio: 1.3,
-      children: items.map((item) => _StatCell(label: item.$1, value: item.$2, color: item.$3)).toList(),
-    );
-  }
-}
-
-class _StatCell extends StatelessWidget {
-  const _StatCell({required this.label, required this.value, required this.color});
+class _PsChip extends StatelessWidget {
+  const _PsChip({required this.label, required this.value, required this.color});
   final String label;
   final int value;
   final Color color;
@@ -413,88 +486,24 @@ class _StatCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withAlpha(15),
+        color: color.withAlpha(18),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withAlpha(60)),
+        border: Border.all(color: color.withAlpha(50)),
       ),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Text('$value', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('$value', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color, height: 1)),
         const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 10, color: color.withAlpha(180)), textAlign: TextAlign.center),
+        Text(label, style: TextStyle(fontSize: 10, color: color.withAlpha(180))),
       ]),
     );
   }
 }
 
-class _SalaryCard extends StatelessWidget {
-  const _SalaryCard({required this.gross, required this.net});
-  final double gross;
-  final double? net;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final fmt = NumberFormat('#,##,##0', 'en_IN');
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cs.primaryContainer.withAlpha(60),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(children: [
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Gross Salary', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-          Text('₹ ${fmt.format(gross)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        ])),
-        if (net != null) ...[
-          Container(width: 1, height: 36, color: cs.outlineVariant),
-          const SizedBox(width: 16),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Net Payable', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-            Text('₹ ${fmt.format(net!.roundToDouble())}',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: cs.primary)),
-          ])),
-        ],
-      ]),
-    );
-  }
-}
-
-// ── Sign out ──────────────────────────────────────────────────────────────────
-
-class _SignOutButton extends StatelessWidget {
-  const _SignOutButton({required this.onPressed});
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      icon: const Icon(Icons.logout_rounded, color: Colors.red),
-      label: const Text('Sign Out', style: TextStyle(color: Colors.red)),
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: Colors.red),
-        minimumSize: const Size(double.infinity, 50),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-}
-
-// ── Stats model ───────────────────────────────────────────────────────────────
+// ── Model ─────────────────────────────────────────────────────────────────────
 
 class _PayslipStats {
-  const _PayslipStats({
-    required this.workingDays,
-    required this.presentDays,
-    required this.leaveDays,
-    required this.holidayDays,
-    required this.absentDays,
-  });
-  final int workingDays;
-  final int presentDays;
-  final int leaveDays;
-  final int holidayDays;
-  final int absentDays;
+  const _PayslipStats({required this.workingDays, required this.presentDays, required this.leaveDays, required this.holidayDays, required this.absentDays});
+  final int workingDays, presentDays, leaveDays, holidayDays, absentDays;
 }

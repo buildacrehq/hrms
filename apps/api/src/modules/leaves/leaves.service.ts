@@ -219,6 +219,18 @@ export class LeavesService {
     return created;
   }
 
+  async cancelRequestAdmin(id: string) {
+    const req = await this.prisma.leaveRequest.findUnique({
+      where: { id },
+      select: { id: true, status: true, employeeId: true, leaveTypeId: true, fromDate: true, toDate: true },
+    });
+    if (!req) throw new NotFoundException('Leave request not found');
+    if (!['PENDING', 'APPROVED'].includes(req.status)) throw new BadRequestException('Only pending or approved requests can be removed');
+    await this.restoreBalance(req.employeeId, req.leaveTypeId, req.fromDate, req.toDate, req.status === 'APPROVED');
+    await this.prisma.leaveRequest.delete({ where: { id } });
+    return { cancelled: true };
+  }
+
   async cancelRequest(id: string, employeeId: string) {
     const req = await this.prisma.leaveRequest.findUnique({
       where: { id },

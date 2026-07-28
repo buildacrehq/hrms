@@ -153,6 +153,11 @@ export default function EmployeeAttendancePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['emp-att-punches', id, startDate] }),
   });
 
+  const removeLeaveM = useMutation({
+    mutationFn: (leaveId: string) => api.delete(`/admin/leaves/requests/${leaveId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['emp-leaves-att', id, year] }),
+  });
+
   const approveRegMut = useMutation({
     mutationFn: (regId: string) => api.post(`/admin/regularizations/${regId}/approve`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['emp-regs', id] }),
@@ -390,9 +395,11 @@ export default function EmployeeAttendancePage() {
       ) : tab === 'daily' ? (
         <DailyView days={days} holidayNames={holidayNames} leaveNames={leaveNames} empId={id}
           notes={notesQ.data ?? []}
+          leaveRequests={leaveQ.data ?? []}
           onNoteChange={() => qc.invalidateQueries({ queryKey: ['emp-day-notes', id, startDate] })}
           onPunchTimeOverride={() => qc.invalidateQueries({ queryKey: ['emp-att-punches', id, startDate] })}
           onMarkLeave={(date) => setGrantLeaveDate(date)}
+          onRemoveLeave={(leaveId) => removeLeaveM.mutate(leaveId)}
         />
       ) : tab === 'calendar' ? (
         <CalendarView days={days} year={year} month={month} holidayNames={holidayNames} leaveNames={leaveNames} />
@@ -742,16 +749,18 @@ function DayNoteField({ empId, dateStr, initial, onSaved }: {
 }
 
 function DailyView({
-  days, holidayNames, leaveNames, empId, notes, onNoteChange, onPunchTimeOverride, onMarkLeave,
+  days, holidayNames, leaveNames, empId, notes, leaveRequests, onNoteChange, onPunchTimeOverride, onMarkLeave, onRemoveLeave,
 }: {
   days: DayData[];
   holidayNames: Record<string, string>;
   leaveNames: Record<string, string>;
   empId: string;
   notes: DayNote[];
+  leaveRequests: LeaveReq[];
   onNoteChange: () => void;
   onPunchTimeOverride: () => void;
   onMarkLeave: (date: string) => void;
+  onRemoveLeave: (leaveId: string) => void;
 }) {
   const DOW_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const visible   = [...days].filter(d => d.status !== 'FUT').reverse();
@@ -872,6 +881,18 @@ function DailyView({
                       <Plus size={10} />Leave
                     </button>
                   )}
+                  {(d.status === 'L' || d.status === 'LP') && (() => {
+                    const ds = d.dateStr;
+                    const lr = leaveRequests.find(r =>
+                      r.fromDate.slice(0,10) <= ds && ds <= r.toDate.slice(0,10)
+                    );
+                    return lr ? (
+                      <button onClick={() => { if (confirm('Remove this leave?')) onRemoveLeave(lr.id); }}
+                        className="flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-0.5 rounded-lg transition-colors">
+                        <X size={10} />Remove Leave
+                      </button>
+                    ) : null;
+                  })()}
                 </div>
               </div>
             </div>
