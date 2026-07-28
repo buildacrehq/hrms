@@ -45,6 +45,9 @@ async function main() {
     // Display
     { key: 'company_name', value: 'Buildacre' },
     { key: 'default_weekly_off', value: 'SUNDAY' },        // day name
+    // App distribution (APK auto-update)
+    { key: 'app_latest_version', value: '1.0.0' },         // bump this when you upload a new APK
+    { key: 'app_apk_url', value: '' },                     // direct download URL of the latest APK
   ];
 
   for (const s of settings) {

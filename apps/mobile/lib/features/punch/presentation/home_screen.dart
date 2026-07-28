@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../domain/punch_notifier.dart';
 import '../data/punch_repository.dart';
 import '../../auth/domain/auth_notifier.dart';
+import '../../../core/providers/app_update_provider.dart';
 import 'punch_camera_screen.dart';
 
 const _kGradient = LinearGradient(
@@ -27,6 +29,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _loadingState = true;
   String _nextType = 'IN';
   bool _isPunching = false;
+  bool _updateBannerVisible = false;
+  bool _updateBannerDismissed = false;
 
   @override
   void initState() {
@@ -92,6 +96,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           duration: const Duration(seconds: 3),
         ));
         await _loadTodayPunches();
+        // Show update banner after punch completes (never during)
+        if (!_updateBannerDismissed && mounted) {
+          final update = await ref.read(appUpdateProvider.future).catchError((_) => null);
+          if (update != null && mounted) setState(() => _updateBannerVisible = true);
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(s.message ?? 'Punch failed. Try again.'),
@@ -110,6 +119,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final employee = ref.watch(authNotifierProvider).employee;
     final punchState = ref.watch(punchNotifierProvider);
+    // Silently watch update — show banner on home when both punches done & not dismissed
+    final updateAsync = ref.watch(appUpdateProvider);
+    if (!_updateBannerDismissed && !_isPunching && _bothDone) {
+      updateAsync.whenData((info) {
+        if (info != null && !_updateBannerVisible) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _updateBannerVisible = true);
+          });
+        }
+      });
+    }
     final isSubmitting = punchState.status != PunchStatus.idle &&
         punchState.status != PunchStatus.success &&
         punchState.status != PunchStatus.error;
@@ -196,6 +216,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   // Today's punches
                   if (_todayPunches.isNotEmpty)
                     _TodayPunchesCard(punches: _todayPunches),
+
+                  // Update banner — shown only after punch or when both done, never during
+                  if (_updateBannerVisible && !_isPunching) ...[
+                    const SizedBox(height: 16),
+                    _UpdateBanner(
+                      onUpdate: () async {
+                        final info = await ref.read(appUpdateProvider.future).catchError((_) => null);
+                        if (info == null) return;
+                        final uri = Uri.tryParse(info.downloadUrl);
+                        if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      },
+                      onDismiss: () => setState(() {
+                        _updateBannerVisible = false;
+                        _updateBannerDismissed = true;
+                      }),
+                    ),
+                  ],
 
                   // Bottom space for floating punch button
                   const SizedBox(height: 140),
@@ -565,4 +602,52 @@ class _PunchButtonArea extends StatelessWidget {
     decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(16)),
     child: child,
   );
+}
+
+// ── Update Banner ─────────────────────────────────────────────────────────────
+
+class _UpdateBanner extends StatelessWidget {
+  const _UpdateBanner({required this.onUpdate, required this.onDismiss});
+  final VoidCallback onUpdate;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(children: [
+        const Icon(Icons.system_update_alt_rounded, color: Color(0xFFD97706), size: 20),
+        const SizedBox(width: 10),
+        const Expanded(
+          child: Text(
+            'A new app update is available',
+            style: TextStyle(
+              color: Color(0xFF92400E), fontSize: 13, fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: onUpdate,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            backgroundColor: const Color(0xFFD97706),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text('Update', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(width: 6),
+        GestureDetector(
+          onTap: onDismiss,
+          child: const Icon(Icons.close_rounded, color: Color(0xFFD97706), size: 18),
+        ),
+      ]),
+    );
+  }
 }

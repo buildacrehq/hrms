@@ -12,6 +12,8 @@ const MOBILE_PUBLIC_KEYS = [
   'require_photo',
   'require_gps',
   'company_name',
+  'app_latest_version',
+  'app_apk_url',
 ];
 
 @ApiTags('Settings (Public)')

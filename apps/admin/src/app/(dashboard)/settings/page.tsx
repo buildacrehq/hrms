@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState, useEffect } from 'react';
-import { Building2, Clock, ShieldCheck, Camera, Bell, CalendarDays, Save, CheckCircle2, KeyRound, Lock, ExternalLink } from 'lucide-react';
+import { Building2, Clock, ShieldCheck, Camera, Bell, CalendarDays, Save, CheckCircle2, KeyRound, Lock, ExternalLink, Smartphone } from 'lucide-react';
 import Link from 'next/link';
 
 type LocalSettings = Record<string, string>;
@@ -51,6 +51,13 @@ const SECTIONS = [
     description: 'Session and login behaviour',
     keys: ['auto_renew_sessions'],
   },
+  {
+    id: 'app_dist',
+    label: 'App Distribution',
+    icon: Smartphone,
+    description: 'APK version & download URL — employees see an update prompt when version is higher than installed',
+    keys: ['app_latest_version', 'app_apk_url'],
+  },
 ] as const;
 
 const LABELS: Record<string, string> = {
@@ -74,6 +81,8 @@ const LABELS: Record<string, string> = {
   cl_days_per_month:          'Casual Leave Days / Month',
   fl_days_per_month:          'Female Leave Days / Month',
   auto_renew_sessions:        'Keep Employees Logged In',
+  app_latest_version:         'Latest App Version',
+  app_apk_url:                'APK Download URL',
 };
 
 const HINTS: Record<string, string> = {
@@ -85,6 +94,8 @@ const HINTS: Record<string, string> = {
   missing_punchout_handling:  'What to do when an employee forgets to punch out',
   auto_approve_normal:        'Automatically approve punches that fall within normal hours',
   auto_renew_sessions:        'When on, employees stay logged in forever — their session auto-renews. When off, they must re-login every 30 days.',
+  app_latest_version:         'e.g. 1.2.0 — bump this when you upload a new APK. App shows update prompt when installed version is lower.',
+  app_apk_url:                'Direct download link to the APK file (Google Drive, Supabase Storage, etc.)',
 };
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
