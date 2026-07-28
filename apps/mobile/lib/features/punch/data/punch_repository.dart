@@ -105,4 +105,57 @@ class PunchRepository {
       return null;
     }
   }
+
+  Future<List<Map<String, dynamic>>> getHolidays(int year) async {
+    try {
+      final resp = await _dio.get('/holidays', queryParameters: {'year': '$year'});
+      final data = resp.data['data'] ?? resp.data;
+      return (data as List?)?.cast<Map<String, dynamic>>() ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getMyLeaves() async {
+    try {
+      final resp = await _dio.get('/leaves/my-requests');
+      final data = resp.data['data'] ?? resp.data;
+      return (data as List?)?.cast<Map<String, dynamic>>() ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getRegularizations() async {
+    try {
+      final resp = await _dio.get('/regularizations/my-requests');
+      final data = resp.data['data'] ?? resp.data;
+      final list = (data as List?)?.cast<Map<String, dynamic>>() ?? [];
+      list.sort((a, b) => (b['createdAt'] as String? ?? '').compareTo(a['createdAt'] as String? ?? ''));
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> submitRegularization({
+    required String date,
+    required String requestType,
+    String? punchInTime,
+    String? punchOutTime,
+    required String reason,
+  }) async {
+    final resp = await _dio.post('/regularizations', data: {
+      'date': date,
+      'requestType': requestType,
+      if (punchInTime != null && punchInTime.isNotEmpty) 'punchInTime': punchInTime,
+      if (punchOutTime != null && punchOutTime.isNotEmpty) 'punchOutTime': punchOutTime,
+      'reason': reason,
+    });
+    return resp.data['data'] as Map<String, dynamic>;
+  }
+
+  Future<void> cancelRegularization(String id) async {
+    await _dio.delete('/regularizations/$id');
+  }
 }
