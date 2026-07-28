@@ -180,11 +180,11 @@ class _RequestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final id = request['id'] as String? ?? '';
-    final type = (request['type'] ?? request['leaveType']) as Map<String, dynamic>? ?? {};
+    final type = (request['leaveType'] ?? request['type']) as Map<String, dynamic>? ?? {};
     final typeName = type['name'] as String? ?? 'Leave';
     final status = request['status'] as String? ?? 'PENDING';
-    final startDate = request['startDate'] as String? ?? '';
-    final endDate = request['endDate'] as String? ?? '';
+    final startDate = (request['fromDate'] ?? request['startDate']) as String? ?? '';
+    final endDate = (request['toDate'] ?? request['endDate']) as String? ?? '';
     final reason = request['reason'] as String? ?? '';
 
     final (statusColor, statusLabel) = switch (status) {
@@ -257,13 +257,14 @@ class _RequestCard extends StatelessWidget {
   void _confirmCancel(BuildContext context, String id) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      useRootNavigator: true,
+      builder: (dlgCtx) => AlertDialog(
         title: const Text('Cancel Leave'),
         content: const Text('Are you sure you want to cancel this leave request?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('No')),
+          TextButton(onPressed: () => Navigator.pop(dlgCtx), child: const Text('No')),
           TextButton(
-            onPressed: () { Navigator.pop(context); onCancel(id); },
+            onPressed: () { Navigator.pop(dlgCtx); onCancel(id); },
             child: Text('Yes, Cancel', style: TextStyle(color: Colors.red.shade600)),
           ),
         ],

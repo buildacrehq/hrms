@@ -26,7 +26,7 @@ class LeavesRepository {
 
   Future<List<Map<String, dynamic>>> getMyBalance() async {
     try {
-      final resp = await _dio.get('/leaves/my-balance');
+      final resp = await _dio.get('/leaves/my-balances');
       final data = resp.data['data'] ?? resp.data ?? [];
       return (data as List?)?.cast<Map<String, dynamic>>() ?? [];
     } catch (_) {
@@ -40,15 +40,15 @@ class LeavesRepository {
     required String endDate,
     required String reason,
   }) async {
-    await _dio.post('/leaves', data: {
-      'typeId': typeId,
-      'startDate': startDate,
-      'endDate': endDate,
+    await _dio.post('/leaves/my-requests', data: {
+      'leaveTypeId': typeId,
+      'fromDate': startDate,
+      'toDate': endDate,
       'reason': reason,
     });
   }
 
   Future<void> cancelLeave(String id) async {
-    await _dio.delete('/leaves/$id');
+    await _dio.delete('/leaves/my-requests/$id');
   }
 }
