@@ -12,15 +12,16 @@ import '../../widgets/main_scaffold.dart';
 
 part 'router.g.dart';
 
-@riverpod
+// keepAlive: GoRouter is created ONCE and never recreated.
+// The redirect reads auth state fresh via ref.read each time it's triggered
+// by _AuthListenable, so there is no stale closure and no login/splash flash.
+@Riverpod(keepAlive: true)
 GoRouter router(Ref ref) {
-  final authState = ref.watch(authNotifierProvider);
-
   return GoRouter(
     initialLocation: '/splash',
     refreshListenable: _AuthListenable(ref),
     redirect: (context, state) {
-      final status = authState.status;
+      final status = ref.read(authNotifierProvider).status;
       final path = state.matchedLocation;
       // Still checking stored token — hold on splash, never show login
       if (status == AuthStatus.unknown) {
