@@ -96,11 +96,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           duration: const Duration(seconds: 3),
         ));
         await _loadTodayPunches();
-        // Show update banner after punch completes (never during)
-        if (!_updateBannerDismissed && mounted) {
-          final update = await ref.read(appUpdateProvider.future).catchError((_) => null);
-          if (update != null && mounted) setState(() => _updateBannerVisible = true);
-        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(s.message ?? 'Punch failed. Try again.'),
@@ -119,10 +114,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final employee = ref.watch(authNotifierProvider).employee;
     final punchState = ref.watch(punchNotifierProvider);
-    // Silently watch update — show banner on home when both punches done & not dismissed
-    final updateAsync = ref.watch(appUpdateProvider);
-    if (!_updateBannerDismissed && !_isPunching && _bothDone) {
-      updateAsync.whenData((info) {
+    // Show update banner as soon as one is available — no restriction on punch state
+    if (!_updateBannerDismissed) {
+      ref.watch(appUpdateProvider).whenData((info) {
         if (info != null && !_updateBannerVisible) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) setState(() => _updateBannerVisible = true);
