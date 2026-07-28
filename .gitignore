@@ -10,6 +10,7 @@ out/
 .env.local
 .env.*.local
 apps/api/.env
+deploy/.env
 
 # Flutter / Dart
 apps/mobile/build/
