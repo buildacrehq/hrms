@@ -542,7 +542,7 @@ class _PunchButtonArea extends StatelessWidget {
       ),
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        _buildButton(),
+        _buildButton(context),
         if (!bothDone && !loading) ...[
           const SizedBox(height: 6),
           const Text('Selfie · GPS required',
@@ -553,7 +553,7 @@ class _PunchButtonArea extends StatelessWidget {
     );
   }
 
-  Widget _buildButton() {
+  Widget _buildButton(BuildContext context) {
     if (loading) {
       return _shell(
         color: const Color(0x55FFFFFF),
