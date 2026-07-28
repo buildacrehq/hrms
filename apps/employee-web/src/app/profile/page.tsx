@@ -67,14 +67,6 @@ export default function ProfilePage() {
     }
   }
 
-  // Change password
-  const [showPwd,    setShowPwd]    = useState(false);
-  const [oldPwd,     setOldPwd]     = useState('');
-  const [newPwd,     setNewPwd]     = useState('');
-  const [confirmPwd, setConfirmPwd] = useState('');
-  const [pwdError,   setPwdError]   = useState('');
-  const [pwdSuccess, setPwdSuccess] = useState('');
-  const [pwdBusy,    setPwdBusy]    = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
@@ -89,23 +81,6 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, [router]);
 
-  async function changePassword() {
-    setPwdError(''); setPwdSuccess('');
-    if (!oldPwd || !newPwd) return setPwdError('Fill in all fields');
-    if (newPwd.length < 6)   return setPwdError('New password must be at least 6 characters');
-    if (newPwd !== confirmPwd) return setPwdError('Passwords do not match');
-    setPwdBusy(true);
-    try {
-      await api.post('/auth/employee/change-password', { oldPassword: oldPwd, newPassword: newPwd });
-      setPwdSuccess('Password updated successfully!');
-      setOldPwd(''); setNewPwd(''); setConfirmPwd('');
-      setShowPwd(false);
-    } catch (e: any) {
-      setPwdError(e?.response?.data?.message ?? 'Failed to change password');
-    } finally {
-      setPwdBusy(false);
-    }
-  }
 
   // Payslip
   const [showPayslip, setShowPayslip] = useState(false);
@@ -392,43 +367,6 @@ export default function ProfilePage() {
             )}
           </div>
         )}
-
-        {/* Change password */}
-        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e5e7eb', overflow: 'hidden', marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <button onClick={() => { setShowPwd(v => !v); setPwdError(''); setPwdSuccess(''); }}
-            style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px' }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>🔑 Change Password</span>
-            <span style={{ fontSize: 18, color: '#9ca3af', display: 'inline-block', transform: showPwd ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>›</span>
-          </button>
-
-          {showPwd && (
-            <div style={{ padding: '0 16px 16px', borderTop: '1px solid #f3f4f6' }}>
-              {pwdSuccess && (
-                <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', color: '#15803d', fontSize: 13, marginBottom: 12, marginTop: 12 }}>
-                  {pwdSuccess}
-                </div>
-              )}
-              {[
-                { label: 'Current Password', value: oldPwd,     set: setOldPwd },
-                { label: 'New Password',      value: newPwd,     set: setNewPwd },
-                { label: 'Confirm Password',  value: confirmPwd, set: setConfirmPwd },
-              ].map(f => (
-                <div key={f.label} style={{ marginTop: 12 }}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{f.label}</label>
-                  <input type="password" value={f.value} onChange={e => f.set(e.target.value)}
-                    style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-              ))}
-              {pwdError && (
-                <div style={{ color: '#dc2626', fontSize: 12, marginTop: 8 }}>{pwdError}</div>
-              )}
-              <button onClick={changePassword} disabled={pwdBusy}
-                style={{ marginTop: 14, width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: '#1d4ed8', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: pwdBusy ? 0.7 : 1 }}>
-                {pwdBusy ? 'Updating…' : 'Update Password'}
-              </button>
-            </div>
-          )}
-        </div>
 
         {/* Logout */}
         <button onClick={logout}
