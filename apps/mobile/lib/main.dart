@@ -20,7 +20,7 @@ class BAApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(Brightness.light, seed),
       darkTheme: _buildTheme(Brightness.dark, seed),
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.light,
       routerConfig: router,
     );
   }

@@ -513,8 +513,8 @@ class _PunchButtonArea extends StatelessWidget {
       return _shell(
         color: const Color(0xFFd1fae5),
         child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text('✅', style: TextStyle(fontSize: 22)),
-          SizedBox(width: 12),
+          Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 26),
+          SizedBox(width: 10),
           Text('Attendance Complete',
             style: TextStyle(color: Color(0xFF065f46), fontSize: 18, fontWeight: FontWeight.bold)),
         ]),
@@ -550,7 +550,7 @@ class _PunchButtonArea extends StatelessWidget {
           )],
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(isIn ? '🟢' : '🔴', style: const TextStyle(fontSize: 22)),
+          Icon(isIn ? Icons.login_rounded : Icons.logout_rounded, color: Colors.white, size: 24),
           const SizedBox(width: 12),
           Text(isIn ? 'Punch IN' : 'Punch OUT',
             style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
