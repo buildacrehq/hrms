@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Calendar, List,
   Clock, AlertCircle, MapPin, Camera, Edit2, Check as CheckIcon, X as XIcon,
-  Umbrella, RefreshCw, Check, X, Download, ExternalLink, StickyNote,
+  Umbrella, RefreshCw, Check, X, Download, ExternalLink, StickyNote, Plus,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { localDateStr } from '@/lib/utils';
@@ -15,6 +15,7 @@ type Employee = {
   id: string; name: string; phone: string; gender: string;
   status: string; defaultSite: { id: string; name: string } | null;
 };
+type LeaveType = { id: string; name: string; scope: string; paid: boolean; accrual: string; };
 type TimeLog = { originalTime: string; newTime: string; reason: string | null; createdAt: string };
 type Punch = {
   id: string; type: 'IN' | 'OUT';
@@ -138,7 +139,14 @@ export default function EmployeeAttendancePage() {
     queryFn:  () => api.get(`/admin/employees/${id}/day-notes`, { params: { startDate, endDate } })
       .then(r => r.data.data ?? r.data ?? []).catch(() => []),
   });
+  const leaveTypesQ = useQuery<LeaveType[]>({
+    queryKey: ['leave-types'],
+    queryFn:  () => api.get('/admin/leaves/types').then(r => r.data.data ?? r.data),
+  });
   const qc = useQueryClient();
+
+  // grant-leave modal state: null = closed, string = pre-filled date, '' = no pre-fill
+  const [grantLeaveDate, setGrantLeaveDate] = useState<string | null>(null);
 
   const confirmApprovalMut = useMutation({
     mutationFn: () => api.post(`/admin/punches/approve-employee/${id}`),
@@ -384,14 +392,129 @@ export default function EmployeeAttendancePage() {
           notes={notesQ.data ?? []}
           onNoteChange={() => qc.invalidateQueries({ queryKey: ['emp-day-notes', id, startDate] })}
           onPunchTimeOverride={() => qc.invalidateQueries({ queryKey: ['emp-att-punches', id, startDate] })}
+          onMarkLeave={(date) => setGrantLeaveDate(date)}
         />
       ) : tab === 'calendar' ? (
         <CalendarView days={days} year={year} month={month} holidayNames={holidayNames} leaveNames={leaveNames} />
       ) : tab === 'leaves' ? (
-        <LeavesTab leaves={leaveQ.data ?? []} />
+        <LeavesTab
+          leaves={leaveQ.data ?? []}
+          onGrant={() => setGrantLeaveDate('')}
+        />
       ) : (
         <RegsTab regs={regQ.data ?? []} approveReg={approveRegMut.mutate} rejectReg={rejectRegMut.mutate} />
       )}
+
+      {grantLeaveDate !== null && employee && (
+        <GrantLeaveModal
+          emp={employee}
+          leaveTypes={leaveTypesQ.data ?? []}
+          initialDate={grantLeaveDate}
+          onClose={() => setGrantLeaveDate(null)}
+          onSaved={() => {
+            setGrantLeaveDate(null);
+            qc.invalidateQueries({ queryKey: ['emp-leaves-att', id, year] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Grant Leave Modal ───────────────────────────────────────── */
+function GrantLeaveModal({ emp, leaveTypes, initialDate, onClose, onSaved }: {
+  emp: Employee;
+  leaveTypes: LeaveType[];
+  initialDate: string;   // '' = no pre-fill (opened from LeavesTab)
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const eligible = leaveTypes.filter(lt => {
+    if (lt.scope === 'FEMALE_ONLY' && emp.gender !== 'FEMALE') return false;
+    if (lt.scope === 'MALE_ONLY'   && emp.gender !== 'MALE')   return false;
+    return true;
+  });
+  const [leaveTypeId, setLeaveTypeId] = useState(eligible[0]?.id ?? '');
+  const [fromDate,    setFromDate]    = useState(initialDate);
+  const [toDate,      setToDate]      = useState(initialDate);
+  const [reason,      setReason]      = useState('');
+  const [saving,      setSaving]      = useState(false);
+  const [err,         setErr]         = useState('');
+
+  async function save() {
+    if (!leaveTypeId) return setErr('Select a leave type');
+    if (!fromDate)    return setErr('Select from date');
+    if (!toDate)      return setErr('Select to date');
+    if (toDate < fromDate) return setErr('To date must be on or after from date');
+    setSaving(true); setErr('');
+    try {
+      await api.post('/admin/leaves/requests', {
+        employeeId: emp.id,
+        leaveTypeId,
+        fromDate,
+        toDate,
+        reason: reason || 'Marked by admin',
+      });
+      onSaved();
+    } catch (e: any) {
+      setErr(e?.response?.data?.message ?? 'Failed to save');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="font-bold text-slate-900">Grant Leave — {emp.name}</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Leave Type</label>
+            <select value={leaveTypeId} onChange={e => setLeaveTypeId(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              {eligible.map(lt => (
+                <option key={lt.id} value={lt.id}>{lt.name}{!lt.paid ? ' (Unpaid)' : ''}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">From</label>
+              <input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); if (!toDate || toDate < e.target.value) setToDate(e.target.value); }}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">To</label>
+              <input type="date" value={toDate} min={fromDate} onChange={e => setToDate(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Reason <span className="font-normal text-slate-400">(optional)</span></label>
+            <input type="text" value={reason} onChange={e => setReason(e.target.value)}
+              placeholder="e.g. Sick leave"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          </div>
+          {err && <p className="text-xs text-red-600 font-medium">{err}</p>}
+        </div>
+        <div className="flex gap-3 px-5 pb-5">
+          <button onClick={onClose}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={save} disabled={saving}
+            className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors">
+            {saving ? 'Saving…' : 'Grant Leave'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -619,7 +742,7 @@ function DayNoteField({ empId, dateStr, initial, onSaved }: {
 }
 
 function DailyView({
-  days, holidayNames, leaveNames, empId, notes, onNoteChange, onPunchTimeOverride,
+  days, holidayNames, leaveNames, empId, notes, onNoteChange, onPunchTimeOverride, onMarkLeave,
 }: {
   days: DayData[];
   holidayNames: Record<string, string>;
@@ -628,6 +751,7 @@ function DailyView({
   notes: DayNote[];
   onNoteChange: () => void;
   onPunchTimeOverride: () => void;
+  onMarkLeave: (date: string) => void;
 }) {
   const DOW_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const visible   = [...days].filter(d => d.status !== 'FUT').reverse();
@@ -736,12 +860,18 @@ function DailyView({
                   />
                 </div>
 
-                {/* Logs link */}
+                {/* Actions row */}
                 <div className="flex items-center gap-3 mt-2">
                   <a href={`/punches?date=${d.dateStr}`}
                     className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">
                     <ExternalLink size={10} />Logs
                   </a>
+                  {d.status === 'A' && (
+                    <button onClick={() => onMarkLeave(d.dateStr)}
+                      className="flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-lg transition-colors">
+                      <Plus size={10} />Leave
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -838,13 +968,28 @@ const LEAVE_STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   CANCELLED:{ bg: '#f1f5f9', text: '#64748b' },
 };
 
-function LeavesTab({ leaves }: { leaves: LeaveReq[] }) {
-  if (leaves.length === 0) return (
-    <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center h-48 text-slate-400">
-      <Umbrella size={32} className="opacity-20 mb-3" />
-      <p className="font-medium text-sm">No leave requests</p>
+function LeavesTab({ leaves, onGrant }: { leaves: LeaveReq[]; onGrant: () => void }) {
+  const empty = leaves.length === 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-slate-500">{empty ? 'No leave requests yet.' : `${leaves.length} request${leaves.length !== 1 ? 's' : ''}`}</p>
+        <button onClick={onGrant}
+          className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-colors">
+          <Plus size={14} />Grant Leave
+        </button>
+      </div>
+      {empty ? (
+        <div className="bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center h-40 text-slate-400">
+          <Umbrella size={28} className="opacity-20 mb-2" />
+          <p className="font-medium text-sm">No leave requests</p>
+        </div>
+      ) : <_LeaveList leaves={leaves} />}
     </div>
   );
+}
+
+function _LeaveList({ leaves }: { leaves: LeaveReq[] }) {
 
   function diffDays(a: string, b: string) {
     return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000) + 1;
