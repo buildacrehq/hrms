@@ -116,6 +116,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final busy = _isPunching || isSubmitting;
     final name = employee?['name'] as String? ?? 'Employee';
     final siteName = (employee?['defaultSite'] as Map<String, dynamic>?)?['name'] as String? ?? '';
+    final topPad = MediaQuery.of(context).padding.top;
 
     return Scaffold(
       backgroundColor: const Color(0xFF1e3a8a),
@@ -146,7 +147,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             backgroundColor: const Color(0xFF1d4ed8),
             child: CustomScrollView(
               slivers: [SliverToBoxAdapter(child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                padding: EdgeInsets.fromLTRB(20, topPad + 20, 20, 0),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   // Brand row + avatar
                   Row(children: [
@@ -161,7 +162,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                   // Live clock
                   const _ClockWidget(),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 10),
 
                   // Date
                   Text(
@@ -171,7 +172,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                   // Site
                   if (siteName.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Row(children: [
                       const Icon(Icons.location_on, size: 12, color: Color(0x6BFFFFFF)),
                       const SizedBox(width: 3),
