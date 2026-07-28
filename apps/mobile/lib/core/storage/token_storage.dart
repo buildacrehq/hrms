@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -8,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 class TokenStorage {
   static const _keyAccess = 'access_token';
   static const _keyRefresh = 'refresh_token';
+  static const _keyProfile = 'cached_profile';
 
   static bool get _useFile => !kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows);
 
@@ -54,10 +56,35 @@ class TokenStorage {
     }
   }
 
+  // ── Profile cache ────────────────────────────────────────────────────────────
+  // Saved so the user's name/site is shown immediately on launch without waiting for the API.
+
+  static Future<Map<String, dynamic>?> getCachedProfile() async {
+    try {
+      final json = _useFile
+          ? await _fileRead(_keyProfile)
+          : await _store.read(key: _keyProfile);
+      if (json == null) return null;
+      return jsonDecode(json) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> saveProfile(Map<String, dynamic> profile) async {
+    final json = jsonEncode(profile);
+    if (_useFile) {
+      await _fileWrite(_keyProfile, json);
+    } else {
+      await _store.write(key: _keyProfile, value: json);
+    }
+  }
+
   static Future<void> clear() async {
     if (_useFile) {
       await _fileDelete(_keyAccess);
       await _fileDelete(_keyRefresh);
+      await _fileDelete(_keyProfile);
     } else {
       await _store.deleteAll();
     }
