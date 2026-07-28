@@ -7,7 +7,6 @@ import '../domain/punch_notifier.dart';
 import '../data/punch_repository.dart';
 import '../../auth/domain/auth_notifier.dart';
 import 'punch_camera_screen.dart';
-import 'punch_history_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -17,37 +16,38 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  List<Map<String, dynamic>> _todayPunches = [];
   bool _loadingState = true;
   String _nextType = 'IN';
-  String? _lastPunchType;
-  DateTime? _lastPunchTime;
   bool _isPunching = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLastPunch());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadTodayPunches());
   }
 
-  Future<void> _loadLastPunch() async {
+  Future<void> _loadTodayPunches() async {
     try {
-      final last = await ref.read(punchRepositoryProvider).getLastPunch();
+      final punches = await ref.read(punchRepositoryProvider).getTodayPunches();
       if (!mounted) return;
+      final hasIn  = punches.any((p) => p['type'] == 'IN'  && p['approvalStatus'] != 'REJECTED');
+      final hasOut = punches.any((p) => p['type'] == 'OUT' && p['approvalStatus'] != 'REJECTED');
       setState(() {
-        if (last != null) {
-          final lastType = last['type'] as String? ?? 'OUT';
-          _lastPunchType = lastType;
-          _nextType = lastType == 'IN' ? 'OUT' : 'IN';
-          final ts = last['timestampDevice'] as String?;
-          _lastPunchTime = ts != null ? DateTime.tryParse(ts) : null;
-        } else {
-          _nextType = 'IN';
-        }
+        _todayPunches = punches;
+        if (hasIn && !hasOut) _nextType = 'OUT';
+        else if (!hasIn)      _nextType = 'IN';
         _loadingState = false;
       });
     } catch (_) {
       if (mounted) setState(() => _loadingState = false);
     }
+  }
+
+  bool get _bothDone {
+    final hasIn  = _todayPunches.any((p) => p['type'] == 'IN'  && p['approvalStatus'] != 'REJECTED');
+    final hasOut = _todayPunches.any((p) => p['type'] == 'OUT' && p['approvalStatus'] != 'REJECTED');
+    return hasIn && hasOut;
   }
 
   Future<void> _doPunch() async {
@@ -60,8 +60,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           builder: (_) => const PunchCameraScreen(),
         ),
       );
-      if (!mounted) return;
-      if (result == null) return;
+      if (!mounted || result == null) return;
 
       await ref.read(punchNotifierProvider.notifier).submitPunch(
             type: _nextType,
@@ -73,24 +72,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!mounted) return;
       final s = ref.read(punchNotifierProvider);
       if (s.status == PunchStatus.success) {
-        final punchedType = _nextType;
-        setState(() {
-          _lastPunchType = punchedType;
-          _lastPunchTime = DateTime.now();
-          _nextType = punchedType == 'IN' ? 'OUT' : 'IN';
-        });
         HapticFeedback.mediumImpact();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Row(children: [
             const Icon(Icons.check_circle, color: Colors.white, size: 18),
             const SizedBox(width: 8),
-            Text('Punch $punchedType recorded successfully'),
+            Text('Punch $_nextType recorded!'),
           ]),
           backgroundColor: Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           duration: const Duration(seconds: 3),
         ));
+        await _loadTodayPunches();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(s.message ?? 'Punch failed. Try again.'),
@@ -109,125 +103,204 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final employee = ref.watch(authNotifierProvider).employee;
     final punchState = ref.watch(punchNotifierProvider);
-
     final isSubmitting = punchState.status != PunchStatus.idle &&
         punchState.status != PunchStatus.success &&
         punchState.status != PunchStatus.error;
     final busy = _isPunching || isSubmitting;
-
     final name = employee?['name'] as String? ?? 'Employee';
-    final siteName =
-        (employee?['defaultSite'] as Map<String, dynamic>?)?['name'] as String? ?? '—';
-    final isIn = _nextType == 'IN';
+    final siteName = (employee?['defaultSite'] as Map<String, dynamic>?)?['name'] as String? ?? '—';
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      body: CustomScrollView(
-        slivers: [
-          // ── App bar ──
-          SliverAppBar(
-            expandedHeight: 0,
-            pinned: true,
-            surfaceTintColor: Colors.transparent,
-            title: Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.construction, color: Colors.white, size: 18),
-                ),
-                const SizedBox(width: 10),
-                const Text('BA', style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
+      appBar: AppBar(
+        surfaceTintColor: Colors.transparent,
+        title: Row(children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+              borderRadius: BorderRadius.circular(8),
             ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.history_rounded),
-                tooltip: 'History',
-                onPressed: busy
-                    ? null
-                    : () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const PunchHistoryScreen())),
-              ),
-              IconButton(
-                icon: const Icon(Icons.logout_rounded),
-                tooltip: 'Logout',
-                onPressed: busy
-                    ? null
-                    : () => ref.read(authNotifierProvider.notifier).logout(),
-              ),
-            ],
+            child: const Icon(Icons.construction, color: Colors.white, size: 18),
           ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // ── Greeting card ──
-                  _GreetingCard(name: name, siteName: siteName),
-                  const SizedBox(height: 20),
-
-                  // ── Clock ──
-                  const _ClockCard(),
-                  const SizedBox(height: 20),
-
-                  // ── Status strip ──
-                  if (!_loadingState && _lastPunchTime != null)
-                    _StatusStrip(
-                      lastType: _lastPunchType ?? '',
-                      lastTime: _lastPunchTime!,
-                      nextType: _nextType,
-                    ),
-                  if (!_loadingState && _lastPunchTime != null)
-                    const SizedBox(height: 20),
-
-                  // ── Punch button ──
-                  _loadingState
-                      ? const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(32),
-                            child: CircularProgressIndicator(),
-                          ),
-                        )
-                      : _PunchButton(
-                          isIn: isIn,
-                          busy: busy,
-                          statusText: switch (punchState.status) {
-                            PunchStatus.uploadingPhoto => 'Uploading photo…',
-                            PunchStatus.submitting => 'Submitting…',
-                            _ => 'Please wait…',
-                          },
-                          onTap: _doPunch,
-                        ),
-
-                  const SizedBox(height: 16),
-
-                  // ── Info hint ──
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.info_outline,
-                          size: 13, color: Colors.grey.shade400),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Camera + GPS required for each punch',
-                        style: TextStyle(
-                            color: Colors.grey.shade400, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+          const SizedBox(width: 10),
+          const Text('BA Workforce', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        ]),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: 'Sign out',
+            onPressed: busy ? null : () => ref.read(authNotifierProvider.notifier).logout(),
           ),
         ],
       ),
+      body: RefreshIndicator(
+        onRefresh: _loadTodayPunches,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _GreetingCard(name: name, siteName: siteName),
+                    const SizedBox(height: 20),
+                    const _ClockCard(),
+                    const SizedBox(height: 20),
+                    _loadingState
+                        ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
+                        : _bothDone
+                            ? _AttendanceCompleteCard()
+                            : _PunchButton(
+                                isIn: _nextType == 'IN',
+                                busy: busy,
+                                statusText: switch (punchState.status) {
+                                  PunchStatus.uploadingPhoto => 'Uploading photo…',
+                                  PunchStatus.submitting => 'Submitting…',
+                                  _ => 'Please wait…',
+                                },
+                                onTap: _doPunch,
+                              ),
+                    const SizedBox(height: 8),
+                    if (!_loadingState && !_bothDone)
+                      Center(
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.info_outline, size: 13, color: Colors.grey.shade400),
+                          const SizedBox(width: 4),
+                          Text('Camera + GPS required for each punch',
+                              style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                        ]),
+                      ),
+                    if (_todayPunches.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      _TodayPunchesList(punches: _todayPunches),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Attendance complete ───────────────────────────────────────────────────────
+
+class _AttendanceCompleteCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.green.shade200, width: 1.5),
+      ),
+      child: Row(children: [
+        Container(
+          width: 52, height: 52,
+          decoration: BoxDecoration(color: Colors.green.shade600, borderRadius: BorderRadius.circular(14)),
+          child: const Icon(Icons.check_rounded, color: Colors.white, size: 30),
+        ),
+        const SizedBox(width: 16),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Attendance Complete', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
+          const SizedBox(height: 2),
+          Text('Both IN and OUT recorded for today', style: TextStyle(fontSize: 12, color: Colors.green.shade600)),
+        ]),
+      ]),
+    );
+  }
+}
+
+// ── Today's punches list ─────────────────────────────────────────────────────
+
+class _TodayPunchesList extends StatelessWidget {
+  const _TodayPunchesList({required this.punches});
+  final List<Map<String, dynamic>> punches;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("Today's Punches", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: cs.onSurface)),
+        const SizedBox(height: 10),
+        ...punches.map((p) => _TodayPunchRow(punch: p)),
+      ],
+    );
+  }
+}
+
+class _TodayPunchRow extends StatelessWidget {
+  const _TodayPunchRow({required this.punch});
+  final Map<String, dynamic> punch;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final type = punch['type'] as String? ?? '';
+    final ts = DateTime.tryParse(punch['timestampServer'] as String? ?? '')?.toLocal();
+    final status = punch['approvalStatus'] as String? ?? 'PENDING';
+    final address = punch['address'] as String? ?? '';
+    final isIn = type == 'IN';
+    final color = isIn ? Colors.green : Colors.deepOrange;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Row(children: [
+        Container(
+          width: 38, height: 38,
+          decoration: BoxDecoration(color: color.withAlpha(25), shape: BoxShape.circle),
+          child: Icon(isIn ? Icons.login_rounded : Icons.logout_rounded, color: color, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text('Punch $type', style: TextStyle(fontWeight: FontWeight.w600, color: color, fontSize: 13)),
+            const SizedBox(width: 8),
+            _StatusChip(status),
+          ]),
+          if (ts != null)
+            Text(DateFormat('hh:mm a').format(ts),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          if (address.isNotEmpty)
+            Text(address, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
+        ])),
+      ]),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip(this.status);
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, label) = switch (status) {
+      'APPROVED' => (Colors.green, 'Approved'),
+      'REJECTED' => (Colors.red, 'Rejected'),
+      _ => (Colors.orange, 'Pending'),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withAlpha(25),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: color.withAlpha(80)),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -249,48 +322,25 @@ class _GreetingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final initials = name.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase();
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 22,
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          child: Text(
-            initials.isNotEmpty ? initials : '?',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
-              color: Theme.of(context).colorScheme.onPrimaryContainer,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(_greeting,
-                  style: TextStyle(
-                      color: Colors.grey.shade500,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500)),
-              Text(name,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16)),
-              Row(
-                children: [
-                  Icon(Icons.location_on_outlined,
-                      size: 12, color: Colors.grey.shade400),
-                  const SizedBox(width: 2),
-                  Text(siteName,
-                      style: TextStyle(
-                          color: Colors.grey.shade400, fontSize: 12)),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    return Row(children: [
+      CircleAvatar(
+        radius: 22,
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        child: Text(initials.isNotEmpty ? initials : '?',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15,
+                color: Theme.of(context).colorScheme.onPrimaryContainer)),
+      ),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(_greeting, style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.w500)),
+        Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Row(children: [
+          Icon(Icons.location_on_outlined, size: 12, color: Colors.grey.shade400),
+          const SizedBox(width: 2),
+          Text(siteName, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+        ]),
+      ])),
+    ]);
   }
 }
 
@@ -311,8 +361,7 @@ class _ClockCardState extends State<_ClockCard> {
   void initState() {
     super.initState();
     _now = DateTime.now();
-    _timer = Timer.periodic(
-        const Duration(seconds: 1), (_) => setState(() => _now = DateTime.now()));
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() => _now = DateTime.now()));
   }
 
   @override
@@ -333,112 +382,16 @@ class _ClockCardState extends State<_ClockCard> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: cs.primary.withAlpha(80),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: cs.primary.withAlpha(80), blurRadius: 20, offset: const Offset(0, 8))],
       ),
-      child: Column(
-        children: [
-          Text(
-            DateFormat('hh:mm:ss a').format(_now),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 34,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1,
-              fontFeatures: [FontFeature.tabularFigures()],
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            DateFormat('EEEE, d MMMM yyyy').format(_now),
-            style: TextStyle(
-              color: Colors.white.withAlpha(200),
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Status strip ─────────────────────────────────────────────────────────────
-
-class _StatusStrip extends StatelessWidget {
-  const _StatusStrip({
-    required this.lastType,
-    required this.lastTime,
-    required this.nextType,
-  });
-  final String lastType;
-  final DateTime lastTime;
-  final String nextType;
-
-  @override
-  Widget build(BuildContext context) {
-    final isIn = lastType == 'IN';
-    final color = isIn ? Colors.green : Colors.orange;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: color.withAlpha(20),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withAlpha(60)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-                children: [
-                  TextSpan(
-                    text: 'Last punch: ',
-                    style: TextStyle(color: Colors.grey.shade500),
-                  ),
-                  TextSpan(
-                    text: lastType,
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold, color: color),
-                  ),
-                  TextSpan(
-                    text: ' at ${DateFormat('hh:mm a').format(lastTime.toLocal())}',
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: (nextType == 'IN' ? Colors.green : Colors.orange).withAlpha(30),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              'Next: $nextType',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: nextType == 'IN' ? Colors.green.shade700 : Colors.orange.shade700,
-              ),
-            ),
-          ),
-        ],
-      ),
+      child: Column(children: [
+        Text(DateFormat('hh:mm:ss a').format(_now),
+            style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.bold,
+                letterSpacing: 1, fontFeatures: [FontFeature.tabularFigures()])),
+        const SizedBox(height: 4),
+        Text(DateFormat('EEEE, d MMMM yyyy').format(_now),
+            style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 13)),
+      ]),
     );
   }
 }
@@ -446,12 +399,7 @@ class _StatusStrip extends StatelessWidget {
 // ── Punch button ─────────────────────────────────────────────────────────────
 
 class _PunchButton extends StatelessWidget {
-  const _PunchButton({
-    required this.isIn,
-    required this.busy,
-    required this.statusText,
-    required this.onTap,
-  });
+  const _PunchButton({required this.isIn, required this.busy, required this.statusText, required this.onTap});
   final bool isIn;
   final bool busy;
   final String statusText;
@@ -471,20 +419,11 @@ class _PunchButton extends StatelessWidget {
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 3),
-            ),
-            const SizedBox(height: 12),
-            Text(statusText,
-                style: TextStyle(
-                    color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
-          ],
-        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3)),
+          const SizedBox(height: 12),
+          Text(statusText, style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+        ]),
       );
     }
 
@@ -497,46 +436,23 @@ class _PunchButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: color.withAlpha(80), width: 1.5),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withAlpha(80),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Icon(icon, color: Colors.white, size: 26),
+        child: Row(children: [
+          Container(
+            width: 52, height: 52,
+            decoration: BoxDecoration(
+              color: color, borderRadius: BorderRadius.circular(14),
+              boxShadow: [BoxShadow(color: color.withAlpha(80), blurRadius: 12, offset: const Offset(0, 4))],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: color)),
-                  const SizedBox(height: 2),
-                  Text(sub,
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          color: Colors.grey.shade500)),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios_rounded,
-                size: 16, color: color.withAlpha(160)),
-          ],
-        ),
+            child: Icon(icon, color: Colors.white, size: 26),
+          ),
+          const SizedBox(width: 16),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+            const SizedBox(height: 2),
+            Text(sub, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
+          ])),
+          Icon(Icons.arrow_forward_ios_rounded, size: 16, color: color.withAlpha(160)),
+        ]),
       ),
     );
   }

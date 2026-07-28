@@ -83,21 +83,24 @@ class PunchRepository {
     }
   }
 
-  Future<Map<String, dynamic>> getMyPunches({String? cursor}) async {
-    final resp = await _dio.get('/punches/me', queryParameters: {
-      if (cursor != null) 'cursor': cursor,
-    });
+  Future<List<Map<String, dynamic>>> getTodayPunches() async {
+    try {
+      final resp = await _dio.get('/punches/today');
+      return (resp.data['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> getMonthPunches(String month) async {
+    final resp = await _dio.get('/punches/me', queryParameters: {'month': month});
     return resp.data['data'] as Map<String, dynamic>;
   }
 
-  /// Returns the most recent punch record for this employee, or null if none.
-  Future<Map<String, dynamic>?> getLastPunch() async {
+  Future<String?> getPunchPhotoUrl(String punchId) async {
     try {
-      final resp = await _dio.get('/punches/me');
-      final data = resp.data['data'] as Map<String, dynamic>;
-      // API returns { punches: [...], nextCursor: "..." } sorted desc by timestampServer
-      final punches = data['punches'] as List<dynamic>;
-      return punches.isNotEmpty ? punches.first as Map<String, dynamic> : null;
+      final resp = await _dio.get('/punches/$punchId/photo-url');
+      return (resp.data['data'] as Map<String, dynamic>?)?['signedUrl'] as String?;
     } catch (_) {
       return null;
     }
