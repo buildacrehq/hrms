@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../data/punch_repository.dart';
 
@@ -15,6 +16,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   late int _month; // 1-indexed
   List<Map<String, dynamic>> _punches = [];
   bool _loading = true;
+  bool _showCalendar = false;
   String? _error;
 
   @override
@@ -90,11 +92,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final grouped = _grouped;
     final dates = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) { if (!didPop) context.go('/home'); },
+      child: Scaffold(
       appBar: AppBar(
         surfaceTintColor: Colors.transparent,
         title: const Text('History', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
+          IconButton(
+            icon: Icon(_showCalendar ? Icons.view_list_rounded : Icons.calendar_month_rounded),
+            tooltip: _showCalendar ? 'List view' : 'Calendar view',
+            onPressed: () => setState(() => _showCalendar = !_showCalendar),
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
@@ -139,30 +149,32 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             ? const Center(child: CircularProgressIndicator())
             : _error != null
                 ? _ErrorView(error: _error!, onRetry: _load)
-                : _punches.isEmpty
-                    ? _EmptyView(month: monthLabel)
-                    : RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: dates.length,
-                          itemBuilder: (ctx, i) {
-                            final date = dates[i];
-                            final dayPunches = grouped[date]!;
-                            final dt = DateTime.parse(date);
-                            final isToday = DateFormat('yyyy-MM-dd').format(DateTime.now()) == date;
-                            return _DayCard(
-                              date: dt,
-                              isToday: isToday,
-                              punches: dayPunches,
-                              repo: ref.read(punchRepositoryProvider),
-                            );
-                          },
-                        ),
-                      ),
+                : _showCalendar
+                    ? _CalendarView(year: _year, month: _month, grouped: grouped)
+                    : _punches.isEmpty
+                        ? _EmptyView(month: monthLabel)
+                        : RefreshIndicator(
+                            onRefresh: _load,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: dates.length,
+                              itemBuilder: (ctx, i) {
+                                final date = dates[i];
+                                final dayPunches = grouped[date]!;
+                                final dt = DateTime.parse(date);
+                                final isToday = DateFormat('yyyy-MM-dd').format(DateTime.now()) == date;
+                                return _DayCard(
+                                  date: dt,
+                                  isToday: isToday,
+                                  punches: dayPunches,
+                                  repo: ref.read(punchRepositoryProvider),
+                                );
+                              },
+                            ),
+                          ),
         ),
       ]),
-    );
+    ));
   }
 }
 
@@ -416,5 +428,118 @@ class _StatusBadge extends StatelessWidget {
         Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
       ]),
     );
+  }
+}
+
+// ── Calendar view ─────────────────────────────────────────────────────────────
+
+class _CalendarView extends StatelessWidget {
+  const _CalendarView({required this.year, required this.month, required this.grouped});
+  final int year;
+  final int month;
+  final Map<String, List<Map<String, dynamic>>> grouped;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final daysInMonth = DateUtils.getDaysInMonth(year, month);
+    // 0=Sun,1=Mon,...6=Sat (weekday % 7 converts Mon=1 to 1, Sun=7 to 0)
+    final firstWeekday = DateTime(year, month, 1).weekday % 7;
+    final today = DateTime.now();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Legend
+        Wrap(spacing: 12, runSpacing: 8, children: [
+          _LegendItem(color: Colors.green.shade400, label: 'Present'),
+          _LegendItem(color: Colors.amber.shade400, label: 'Half day'),
+          _LegendItem(color: Colors.red.shade300, label: 'Absent'),
+          _LegendItem(color: cs.surfaceContainerHighest, label: 'Sunday', textColor: cs.onSurfaceVariant),
+        ]),
+        const SizedBox(height: 16),
+
+        // Day-of-week header
+        Row(children: ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d) =>
+          Expanded(child: Center(child: Text(d,
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: cs.onSurfaceVariant))))
+        ).toList()),
+        const SizedBox(height: 6),
+
+        // Day grid
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7, childAspectRatio: 1.05,
+            mainAxisSpacing: 4, crossAxisSpacing: 4,
+          ),
+          itemCount: firstWeekday + daysInMonth,
+          itemBuilder: (ctx, i) {
+            if (i < firstWeekday) return const SizedBox();
+            final day = i - firstWeekday + 1;
+            final date = DateTime(year, month, day);
+            final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+            final dayPunches = grouped[dateStr] ?? [];
+            final isSunday = date.weekday == DateTime.sunday;
+            final isToday = date.year == today.year && date.month == today.month && date.day == today.day;
+            final isFuture = date.isAfter(DateTime(today.year, today.month, today.day));
+
+            final hasIn  = dayPunches.any((p) => p['type'] == 'IN'  && p['approvalStatus'] != 'REJECTED');
+            final hasOut = dayPunches.any((p) => p['type'] == 'OUT' && p['approvalStatus'] != 'REJECTED');
+
+            Color? cellColor;
+            Color textColor = cs.onSurface;
+            if (isSunday) {
+              cellColor = cs.surfaceContainerHighest;
+              textColor = cs.onSurfaceVariant;
+            } else if (isFuture) {
+              cellColor = null;
+            } else if (hasIn && hasOut) {
+              cellColor = Colors.green.withAlpha(45);
+              textColor = Colors.green.shade700;
+            } else if (hasIn) {
+              cellColor = Colors.amber.withAlpha(45);
+              textColor = Colors.amber.shade800;
+            } else {
+              cellColor = Colors.red.withAlpha(30);
+              textColor = Colors.red.shade400;
+            }
+
+            return Container(
+              decoration: BoxDecoration(
+                color: cellColor,
+                borderRadius: BorderRadius.circular(8),
+                border: isToday ? Border.all(color: cs.primary, width: 2) : null,
+              ),
+              child: Center(child: Text('$day', style: TextStyle(
+                fontSize: 13,
+                fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                color: isToday && cellColor == null ? cs.primary : textColor,
+              ))),
+            );
+          },
+        ),
+      ]),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  const _LegendItem({required this.color, required this.label, this.textColor});
+  final Color color;
+  final String label;
+  final Color? textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: 12, height: 12,
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
+      ),
+      const SizedBox(width: 4),
+      Text(label, style: TextStyle(fontSize: 11, color: textColor)),
+    ]);
   }
 }

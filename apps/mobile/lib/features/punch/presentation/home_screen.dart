@@ -8,6 +8,13 @@ import '../data/punch_repository.dart';
 import '../../auth/domain/auth_notifier.dart';
 import 'punch_camera_screen.dart';
 
+const _kGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0xFF1e3a8a), Color(0xFF1d4ed8), Color(0xFF1e40af)],
+  stops: [0.0, 0.45, 1.0],
+);
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -35,8 +42,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final hasOut = punches.any((p) => p['type'] == 'OUT' && p['approvalStatus'] != 'REJECTED');
       setState(() {
         _todayPunches = punches;
-        if (hasIn && !hasOut) _nextType = 'OUT';
-        else if (!hasIn)      _nextType = 'IN';
+        if (hasIn && !hasOut) { _nextType = 'OUT'; }
+        else if (!hasIn)      { _nextType = 'IN'; }
         _loadingState = false;
       });
     } catch (_) {
@@ -108,252 +115,144 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         punchState.status != PunchStatus.error;
     final busy = _isPunching || isSubmitting;
     final name = employee?['name'] as String? ?? 'Employee';
-    final siteName = (employee?['defaultSite'] as Map<String, dynamic>?)?['name'] as String? ?? '—';
+    final siteName = (employee?['defaultSite'] as Map<String, dynamic>?)?['name'] as String? ?? '';
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: AppBar(
-        surfaceTintColor: Colors.transparent,
-        title: Row(children: [
-          Container(
-            width: 32, height: 32,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.construction, color: Colors.white, size: 18),
-          ),
-          const SizedBox(width: 10),
-          const Text('BA Workforce', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        ]),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Sign out',
-            onPressed: busy ? null : () => ref.read(authNotifierProvider.notifier).logout(),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadTodayPunches,
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _GreetingCard(name: name, siteName: siteName),
-                    const SizedBox(height: 20),
-                    const _ClockCard(),
-                    const SizedBox(height: 20),
-                    _loadingState
-                        ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
-                        : _bothDone
-                            ? _AttendanceCompleteCard()
-                            : _PunchButton(
-                                isIn: _nextType == 'IN',
-                                busy: busy,
-                                statusText: switch (punchState.status) {
-                                  PunchStatus.uploadingPhoto => 'Uploading photo…',
-                                  PunchStatus.submitting => 'Submitting…',
-                                  _ => 'Please wait…',
-                                },
-                                onTap: _doPunch,
-                              ),
-                    const SizedBox(height: 8),
-                    if (!_loadingState && !_bothDone)
-                      Center(
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.info_outline, size: 13, color: Colors.grey.shade400),
-                          const SizedBox(width: 4),
-                          Text('Camera + GPS required for each punch',
-                              style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
-                        ]),
-                      ),
-                    if (_todayPunches.isNotEmpty) ...[
-                      const SizedBox(height: 24),
-                      _TodayPunchesList(punches: _todayPunches),
-                    ],
+      backgroundColor: const Color(0xFF1e3a8a),
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
+        child: Stack(children: [
+          // Full gradient background
+          Positioned.fill(child: Container(decoration: const BoxDecoration(gradient: _kGradient))),
+
+          // Decorative circles
+          Positioned(top: 0, right: -50, child: Container(
+            width: 190, height: 190,
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x0FFFFFFF)),
+          )),
+          Positioned(bottom: 140, left: 10, child: Container(
+            width: 80, height: 80,
+            decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x0AFFFFFF)),
+          )),
+
+          // Scrollable content
+          Positioned.fill(child: RefreshIndicator(
+            onRefresh: _loadTodayPunches,
+            color: Colors.white,
+            backgroundColor: const Color(0xFF1d4ed8),
+            child: CustomScrollView(
+              slivers: [SliverToBoxAdapter(child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // Brand row + avatar
+                  Row(children: [
+                    const Text('BA WORKFORCE', style: TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w800,
+                      color: Color(0x80FFFFFF), letterSpacing: 2.0,
+                    )),
+                    const Spacer(),
+                    _AvatarCircle(name: name),
+                  ]),
+                  const SizedBox(height: 22),
+
+                  // Live clock
+                  const _ClockWidget(),
+                  const SizedBox(height: 6),
+
+                  // Date
+                  Text(
+                    DateFormat('EEEE, d MMMM yyyy').format(DateTime.now()),
+                    style: const TextStyle(fontSize: 14, color: Color(0xA6FFFFFF), fontWeight: FontWeight.w500),
+                  ),
+
+                  // Site
+                  if (siteName.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      const Icon(Icons.location_on, size: 12, color: Color(0x6BFFFFFF)),
+                      const SizedBox(width: 3),
+                      Expanded(child: Text(siteName,
+                        style: const TextStyle(fontSize: 12, color: Color(0x6BFFFFFF)),
+                        overflow: TextOverflow.ellipsis)),
+                    ]),
                   ],
-                ),
-              ),
+
+                  // Daily greeting bubble
+                  const SizedBox(height: 18),
+                  _DailyWishBubble(name: name),
+                  const SizedBox(height: 16),
+
+                  // Clocked-in status
+                  if (!_loadingState && _nextType == 'OUT' && !_bothDone) ...[
+                    const _ClockedInBanner(),
+                    const SizedBox(height: 10),
+                  ],
+
+                  // Today's punches
+                  if (_todayPunches.isNotEmpty)
+                    _TodayPunchesCard(punches: _todayPunches),
+
+                  // Bottom space for floating punch button
+                  const SizedBox(height: 140),
+                ]),
+              ))],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+          )),
 
-// ── Attendance complete ───────────────────────────────────────────────────────
-
-class _AttendanceCompleteCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green.shade200, width: 1.5),
-      ),
-      child: Row(children: [
-        Container(
-          width: 52, height: 52,
-          decoration: BoxDecoration(color: Colors.green.shade600, borderRadius: BorderRadius.circular(14)),
-          child: const Icon(Icons.check_rounded, color: Colors.white, size: 30),
-        ),
-        const SizedBox(width: 16),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Attendance Complete', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
-          const SizedBox(height: 2),
-          Text('Both IN and OUT recorded for today', style: TextStyle(fontSize: 12, color: Colors.green.shade600)),
+          // Floating punch button
+          Positioned(
+            bottom: 0, left: 0, right: 0,
+            child: _PunchButtonArea(
+              bothDone: _bothDone,
+              loading: _loadingState,
+              busy: busy,
+              isIn: _nextType == 'IN',
+              onTap: _doPunch,
+              statusText: switch (punchState.status) {
+                PunchStatus.uploadingPhoto => 'Uploading photo…',
+                PunchStatus.submitting => 'Submitting…',
+                _ => 'Please wait…',
+              },
+            ),
+          ),
         ]),
-      ]),
-    );
-  }
-}
-
-// ── Today's punches list ─────────────────────────────────────────────────────
-
-class _TodayPunchesList extends StatelessWidget {
-  const _TodayPunchesList({required this.punches});
-  final List<Map<String, dynamic>> punches;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text("Today's Punches", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: cs.onSurface)),
-        const SizedBox(height: 10),
-        ...punches.map((p) => _TodayPunchRow(punch: p)),
-      ],
-    );
-  }
-}
-
-class _TodayPunchRow extends StatelessWidget {
-  const _TodayPunchRow({required this.punch});
-  final Map<String, dynamic> punch;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final type = punch['type'] as String? ?? '';
-    final ts = DateTime.tryParse(punch['timestampServer'] as String? ?? '')?.toLocal();
-    final status = punch['approvalStatus'] as String? ?? 'PENDING';
-    final address = punch['address'] as String? ?? '';
-    final isIn = type == 'IN';
-    final color = isIn ? Colors.green : Colors.deepOrange;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outlineVariant),
       ),
-      child: Row(children: [
-        Container(
-          width: 38, height: 38,
-          decoration: BoxDecoration(color: color.withAlpha(25), shape: BoxShape.circle),
-          child: Icon(isIn ? Icons.login_rounded : Icons.logout_rounded, color: color, size: 20),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text('Punch $type', style: TextStyle(fontWeight: FontWeight.w600, color: color, fontSize: 13)),
-            const SizedBox(width: 8),
-            _StatusChip(status),
-          ]),
-          if (ts != null)
-            Text(DateFormat('hh:mm a').format(ts),
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-          if (address.isNotEmpty)
-            Text(address, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
-        ])),
-      ]),
     );
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip(this.status);
-  final String status;
+// ── Avatar ────────────────────────────────────────────────────────────────────
 
-  @override
-  Widget build(BuildContext context) {
-    final (color, label) = switch (status) {
-      'APPROVED' => (Colors.green, 'Approved'),
-      'REJECTED' => (Colors.red, 'Rejected'),
-      _ => (Colors.orange, 'Pending'),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withAlpha(25),
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: color.withAlpha(80)),
-      ),
-      child: Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
-    );
-  }
-}
-
-// ── Greeting card ────────────────────────────────────────────────────────────
-
-class _GreetingCard extends StatelessWidget {
-  const _GreetingCard({required this.name, required this.siteName});
+class _AvatarCircle extends StatelessWidget {
+  const _AvatarCircle({required this.name});
   final String name;
-  final String siteName;
-
-  String get _greeting {
-    final h = DateTime.now().hour;
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
-  }
 
   @override
   Widget build(BuildContext context) {
     final initials = name.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase();
-    return Row(children: [
-      CircleAvatar(
-        radius: 22,
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        child: Text(initials.isNotEmpty ? initials : '?',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15,
-                color: Theme.of(context).colorScheme.onPrimaryContainer)),
-      ),
-      const SizedBox(width: 12),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(_greeting, style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.w500)),
-        Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        Row(children: [
-          Icon(Icons.location_on_outlined, size: 12, color: Colors.grey.shade400),
-          const SizedBox(width: 2),
-          Text(siteName, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
-        ]),
-      ])),
-    ]);
+    return Container(
+      width: 42, height: 42,
+      decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x33FFFFFF)),
+      child: Center(child: Text(initials.isNotEmpty ? initials : '?',
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))),
+    );
   }
 }
 
-// ── Clock card ───────────────────────────────────────────────────────────────
+// ── Live clock ────────────────────────────────────────────────────────────────
 
-class _ClockCard extends StatefulWidget {
-  const _ClockCard();
+class _ClockWidget extends StatefulWidget {
+  const _ClockWidget();
 
   @override
-  State<_ClockCard> createState() => _ClockCardState();
+  State<_ClockWidget> createState() => _ClockWidgetState();
 }
 
-class _ClockCardState extends State<_ClockCard> {
+class _ClockWidgetState extends State<_ClockWidget> {
   late DateTime _now;
   late Timer _timer;
 
@@ -361,7 +260,9 @@ class _ClockCardState extends State<_ClockCard> {
   void initState() {
     super.initState();
     _now = DateTime.now();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() => _now = DateTime.now()));
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
   }
 
   @override
@@ -372,88 +273,295 @@ class _ClockCardState extends State<_ClockCard> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [cs.primary, cs.primary.withAlpha(200)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: cs.primary.withAlpha(80), blurRadius: 20, offset: const Offset(0, 8))],
+    return Text(
+      DateFormat('hh:mm:ss a').format(_now),
+      style: const TextStyle(
+        color: Colors.white, fontSize: 44, fontWeight: FontWeight.w800,
+        letterSpacing: -2, height: 1,
+        fontFeatures: [FontFeature.tabularFigures()],
       ),
-      child: Column(children: [
-        Text(DateFormat('hh:mm:ss a').format(_now),
-            style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.bold,
-                letterSpacing: 1, fontFeatures: [FontFeature.tabularFigures()])),
-        const SizedBox(height: 4),
-        Text(DateFormat('EEEE, d MMMM yyyy').format(_now),
-            style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 13)),
+    );
+  }
+}
+
+// ── Daily wish ────────────────────────────────────────────────────────────────
+
+class _DailyWishBubble extends StatelessWidget {
+  const _DailyWishBubble({required this.name});
+  final String name;
+
+  static const _wishes = [
+    'Hello {Name}, top of the {Time}! Ready to make it the best? 🚀',
+    'Hey {Name}, warm {Time} greetings! Great to see you. 😊',
+    '{Time} check, {Name}! Coffee strong, focus sharp. ☕',
+    'Hello {Name}, awesome {Time}! Let\'s conquer the checklist. ✅',
+    'Happy {Time}, {Name}! Sending high energy your way. ⚡',
+    'Good {Time}, {Name}! Time to work your magic. ✨',
+    'Hey {Name}, great {Time}! Let\'s turn goals into wins today. 🎯',
+    'Hello {Name}, pleasant {Time}! Hope your shift runs smoothly. 🌿',
+    '{Time} vibes, {Name}! Let\'s crush those targets. 💪',
+    'Hey {Name}, cheerful {Time}! Ready to shine today? 🙌',
+    'Good {Time}, {Name}! Fresh start, let\'s roll. 🌊',
+    'Hello {Name}, lovely {Time}! Time to bring your best. 🔥',
+    'Hey {Name}, fantastic {Time}! Wishing you effortless progress today. 📈',
+    '{Time} alert, {Name}! Let\'s make this session count. 📊',
+    'Good {Time}, {Name}! One win at a time. 🏆',
+    'Hello {Name}, inspiring {Time}! Let\'s create big things. 💡',
+    'Hey {Name}, productive {Time}! Let\'s get down to business. 👊',
+    'Good {Time}, {Name}! May your workflow be fast and light. ⚡',
+    'Hello {Name}, smooth {Time} ahead! You\'ve got this handled. 🛡️',
+    'Hey {Name}, vibrant {Time}! Hope you\'re feeling locked in. 🔐',
+    '{Time} greetings, {Name}! Small steps lead to big results. 🐾',
+    'Hello {Name}, bright {Time}! Ready to show off your skills? 🎨',
+    'Hey {Name}, welcome to this {Time} shift! Glad you\'re here. 🤝',
+    'Good {Time}, {Name}! Let\'s keep the momentum going. 🎢',
+    'Hello {Name}, calm {Time}! Stay steady and focused. 🧘',
+    'Hey {Name}, power {Time}! Let\'s make every minute count. ⏱️',
+    'Good {Time}, {Name}! Positive vibes for your workday ahead. 🌟',
+    'Hello {Name}, quick {Time} check-in! Let\'s smash today\'s goals. 📝',
+    'Hey {Name}, golden {Time}! Hope your day runs like clockwork. ⚙️',
+    'Good {Time}, {Name}! Time to turn caffeine into results. 💻',
+    'Hello {Name}, peaceful {Time}! Finish strong and own the day. 🏁',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final day = DateTime.now().day;
+    final h = DateTime.now().hour;
+    final time = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
+    final tpl = _wishes[(day - 1) % _wishes.length];
+    final wish = tpl.replaceAll('{Name}', name).replaceAll('{Time}', time);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(color: const Color(0x1CFFFFFF), borderRadius: BorderRadius.circular(14)),
+      child: Text(wish, style: const TextStyle(
+        fontSize: 13, color: Color(0xEBFFFFFF), fontWeight: FontWeight.w500, height: 1.55,
+      )),
+    );
+  }
+}
+
+// ── Clocked-in banner ─────────────────────────────────────────────────────────
+
+class _ClockedInBanner extends StatelessWidget {
+  const _ClockedInBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      decoration: BoxDecoration(
+        color: const Color(0x1EFFFFFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x33FFFFFF)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 10, height: 10,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Color(0xFF4ade80),
+            boxShadow: [BoxShadow(color: Color(0x404ade80), blurRadius: 0, spreadRadius: 4)],
+          ),
+        ),
+        const SizedBox(width: 12),
+        const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text("You're clocked in",
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+          SizedBox(height: 1),
+          Text('Remember to punch out at end of shift',
+            style: TextStyle(fontSize: 11, color: Color(0xA6FFFFFF))),
+        ]),
       ]),
     );
   }
 }
 
-// ── Punch button ─────────────────────────────────────────────────────────────
+// ── Today's punches card ──────────────────────────────────────────────────────
 
-class _PunchButton extends StatelessWidget {
-  const _PunchButton({required this.isIn, required this.busy, required this.statusText, required this.onTap});
-  final bool isIn;
-  final bool busy;
-  final String statusText;
-  final VoidCallback onTap;
+class _TodayPunchesCard extends StatelessWidget {
+  const _TodayPunchesCard({required this.punches});
+  final List<Map<String, dynamic>> punches;
 
   @override
   Widget build(BuildContext context) {
-    final color = isIn ? const Color(0xFF16A34A) : const Color(0xFFEA580C);
-    final icon = isIn ? Icons.login_rounded : Icons.logout_rounded;
-    final label = isIn ? 'Punch In' : 'Punch Out';
-    final sub = isIn ? 'Tap to mark your arrival' : 'Tap to mark your departure';
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0x1AFFFFFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x2EFFFFFF)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('TODAY', style: TextStyle(
+          fontSize: 11, fontWeight: FontWeight.w700,
+          color: Color(0x80FFFFFF), letterSpacing: 1.5,
+        )),
+        const SizedBox(height: 10),
+        ...punches.map((p) => _DarkPunchRow(punch: p)),
+      ]),
+    );
+  }
+}
 
-    if (busy) {
-      return Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
+class _DarkPunchRow extends StatelessWidget {
+  const _DarkPunchRow({required this.punch});
+  final Map<String, dynamic> punch;
+
+  @override
+  Widget build(BuildContext context) {
+    final type = punch['type'] as String? ?? '';
+    final ts = DateTime.tryParse(punch['timestampServer'] as String? ?? '')?.toLocal();
+    final status = punch['approvalStatus'] as String? ?? 'PENDING';
+    final address = punch['address'] as String? ?? '';
+    final isIn = type == 'IN';
+    final typeColor = isIn ? const Color(0xFF4ade80) : const Color(0xFFf87171);
+    final statusIcon = status == 'APPROVED' ? '✓' : status == 'REJECTED' ? '✗' : '⏳';
+    final statusColor = status == 'APPROVED'
+        ? const Color(0xFF4ade80)
+        : status == 'REJECTED'
+            ? const Color(0xFFf87171)
+            : const Color(0x66FFFFFF);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(children: [
+        Container(
+          width: 38, height: 38,
+          decoration: BoxDecoration(
+            color: typeColor.withAlpha(38),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Center(child: Text(type,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: typeColor))),
         ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3)),
-          const SizedBox(height: 12),
-          Text(statusText, style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            if (ts != null)
+              Text(DateFormat('hh:mm a').format(ts),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
+            const Spacer(),
+            Text(statusIcon, style: TextStyle(fontSize: 13, color: statusColor)),
+          ]),
+          if (address.isNotEmpty)
+            Text(address,
+              style: const TextStyle(fontSize: 11, color: Color(0x8CFFFFFF)),
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+        ])),
+      ]),
+    );
+  }
+}
+
+// ── Floating punch button ─────────────────────────────────────────────────────
+
+class _PunchButtonArea extends StatelessWidget {
+  const _PunchButtonArea({
+    required this.bothDone,
+    required this.loading,
+    required this.busy,
+    required this.isIn,
+    required this.onTap,
+    required this.statusText,
+  });
+  final bool bothDone;
+  final bool loading;
+  final bool busy;
+  final bool isIn;
+  final VoidCallback onTap;
+  final String statusText;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x001e3a8a), Color(0xFF1e3a8a)],
+          stops: [0.0, 0.55],
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        _buildButton(),
+        if (!bothDone && !loading) ...[
+          const SizedBox(height: 6),
+          const Text('Selfie · GPS required',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: Color(0x8CFFFFFF))),
+        ],
+      ]),
+    );
+  }
+
+  Widget _buildButton() {
+    if (loading) {
+      return _shell(
+        color: const Color(0x55FFFFFF),
+        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)),
+          SizedBox(width: 12),
+          Text('Loading…', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
         ]),
       );
     }
-
+    if (bothDone) {
+      return _shell(
+        color: const Color(0xFFd1fae5),
+        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text('✅', style: TextStyle(fontSize: 22)),
+          SizedBox(width: 12),
+          Text('Attendance Complete',
+            style: TextStyle(color: Color(0xFF065f46), fontSize: 18, fontWeight: FontWeight.bold)),
+        ]),
+      );
+    }
+    if (busy) {
+      return _shell(
+        color: const Color(0xFF6b7280),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)),
+          const SizedBox(width: 12),
+          Text(statusText, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        ]),
+      );
+    }
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18),
         decoration: BoxDecoration(
-          color: color.withAlpha(12),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withAlpha(80), width: 1.5),
-        ),
-        child: Row(children: [
-          Container(
-            width: 52, height: 52,
-            decoration: BoxDecoration(
-              color: color, borderRadius: BorderRadius.circular(14),
-              boxShadow: [BoxShadow(color: color.withAlpha(80), blurRadius: 12, offset: const Offset(0, 4))],
-            ),
-            child: Icon(icon, color: Colors.white, size: 26),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isIn
+                ? [const Color(0xFF16a34a), const Color(0xFF15803d)]
+                : [const Color(0xFFdc2626), const Color(0xFFb91c1c)],
           ),
-          const SizedBox(width: 16),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-            const SizedBox(height: 2),
-            Text(sub, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
-          ])),
-          Icon(Icons.arrow_forward_ios_rounded, size: 16, color: color.withAlpha(160)),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(
+            color: (isIn ? Colors.green : Colors.red).withAlpha(80),
+            blurRadius: 18, offset: const Offset(0, 4),
+          )],
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text(isIn ? '🟢' : '🔴', style: const TextStyle(fontSize: 22)),
+          const SizedBox(width: 12),
+          Text(isIn ? 'Punch IN' : 'Punch OUT',
+            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
         ]),
       ),
     );
   }
+
+  Widget _shell({required Color color, required Widget child}) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(vertical: 18),
+    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(16)),
+    child: child,
+  );
 }
