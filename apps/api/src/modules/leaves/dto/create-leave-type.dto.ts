@@ -52,4 +52,9 @@ export class CreateLeaveTypeDto {
   @IsOptional()
   @IsEnum(AccrualType)
   accrual?: AccrualType;
+
+  @ApiPropertyOptional({ default: false, description: 'If true, unused monthly balance expires at end of each month (use-it-or-lose-it)' })
+  @IsOptional()
+  @IsBoolean()
+  monthlyExpiry?: boolean;
 }

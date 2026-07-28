@@ -286,7 +286,8 @@ export class LeavesService {
     return { ...result, available: Math.max(0, result.credited - result.used) };
   }
 
-  // Called by monthly accrual cron — credits daysEntitled/12 for MONTHLY types
+  // Called by monthly accrual cron — credits daysEntitled/12 for MONTHLY types.
+  // For monthlyExpiry types, unused balance from the prior month is expired before crediting.
   async accrueMonthlyBalances() {
     const types = await this.prisma.leaveType.findMany({
       where: { isActive: true, accrual: 'MONTHLY' },
@@ -302,6 +303,24 @@ export class LeavesService {
       for (const emp of employees) {
         const monthsEmployed = (Date.now() - emp.createdAt.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
         if (monthsEmployed < lt.eligibilityMinMonths) continue;
+
+        if (lt.monthlyExpiry) {
+          // Expire any unused balance before crediting this month
+          const existing = await this.prisma.leaveBalance.findUnique({
+            where: { employeeId_leaveTypeId_year: { employeeId: emp.id, leaveTypeId: lt.id, year } },
+          });
+          if (existing) {
+            const unused = Math.max(0, existing.credited - existing.used);
+            if (unused > 0) {
+              // Mark unused as consumed (expired)
+              await this.prisma.leaveBalance.update({
+                where: { employeeId_leaveTypeId_year: { employeeId: emp.id, leaveTypeId: lt.id, year } },
+                data: { used: { increment: unused } },
+              });
+            }
+          }
+        }
+
         await this.upsertBalance(emp.id, lt.id, year, monthlyCredit, 0);
       }
     }

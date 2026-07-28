@@ -57,38 +57,103 @@ async function main() {
   console.log(`✓ Settings seeded (${settings.length} keys)`);
 
   // ── Leave types ─────────────────────────────────────────────────────────────
+  // Casual Leave: 1/month, all employees, carries within Jan–Dec (resets Jan 1)
   await prisma.leaveType.upsert({
     where: { id: 'lt-casual' },
-    update: {},
+    update: { name: 'Casual Leave', carryForward: true, monthlyExpiry: false },
     create: {
       id: 'lt-casual',
       name: 'Casual Leave',
-      daysEntitled: 1,
+      daysEntitled: 12,
       scope: 'ALL',
       paid: true,
-      carryForward: false,
+      carryForward: true,
+      monthlyExpiry: false,
       eligibilityMinMonths: 0,
       approvalMode: 'MANUAL',
       accrual: 'MONTHLY',
     },
   });
 
+  // Women's Wellness Leave: 1/month, female only, expires end of month (use-it-or-lose-it)
   await prisma.leaveType.upsert({
-    where: { id: 'lt-female' },
-    update: {},
+    where: { id: 'lt-wellness' },
+    update: { name: "Women's Wellness Leave", monthlyExpiry: true },
     create: {
-      id: 'lt-female',
-      name: 'Female Leave',
-      daysEntitled: 1,
+      id: 'lt-wellness',
+      name: "Women's Wellness Leave",
+      daysEntitled: 12,
       scope: 'FEMALE_ONLY',
       paid: true,
       carryForward: false,
+      monthlyExpiry: true,
       eligibilityMinMonths: 0,
       approvalMode: 'MANUAL',
       accrual: 'MONTHLY',
     },
   });
-  console.log('✓ Leave types seeded (Casual Leave, Female Leave)');
+
+  // Deactivate old 'Female Leave' entry if it exists
+  await prisma.leaveType.updateMany({
+    where: { id: 'lt-female' },
+    data: { isActive: false },
+  });
+
+  // Comp Off: manually credited by admin when employee works on weekly off / holiday
+  await prisma.leaveType.upsert({
+    where: { id: 'lt-compoff' },
+    update: {},
+    create: {
+      id: 'lt-compoff',
+      name: 'Comp Off',
+      daysEntitled: 0,
+      scope: 'ALL',
+      paid: true,
+      carryForward: false,
+      monthlyExpiry: false,
+      eligibilityMinMonths: 0,
+      approvalMode: 'MANUAL',
+      accrual: 'MANUAL',
+    },
+  });
+
+  // Unpaid Leave: always available, no balance deducted
+  await prisma.leaveType.upsert({
+    where: { id: 'lt-unpaid' },
+    update: {},
+    create: {
+      id: 'lt-unpaid',
+      name: 'Unpaid Leave',
+      daysEntitled: 0,
+      scope: 'ALL',
+      paid: false,
+      carryForward: false,
+      monthlyExpiry: false,
+      eligibilityMinMonths: 0,
+      approvalMode: 'MANUAL',
+      accrual: 'MANUAL',
+    },
+  });
+
+  // Other: catch-all label, no balance tracking
+  await prisma.leaveType.upsert({
+    where: { id: 'lt-other' },
+    update: {},
+    create: {
+      id: 'lt-other',
+      name: 'Other',
+      daysEntitled: 0,
+      scope: 'ALL',
+      paid: false,
+      carryForward: false,
+      monthlyExpiry: false,
+      eligibilityMinMonths: 0,
+      approvalMode: 'MANUAL',
+      accrual: 'MANUAL',
+    },
+  });
+
+  console.log('✓ Leave types seeded (Casual Leave, Women\'s Wellness, Comp Off, Unpaid Leave, Other)');
 
   // ── Default admin account ───────────────────────────────────────────────────
   // IMPORTANT: change this password before any real deployment.

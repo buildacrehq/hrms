@@ -28,6 +28,8 @@ model Employee {
   // Monthly salary in INR; null = not configured
   monthlySalary  Decimal? @db.Decimal(10, 2)
   employmentType EmpType  @default(MONTHLY_REGULAR)
+  // Day of the week for this employee's weekly off: 0=Sun, 1=Mon, …, 6=Sat
+  weeklyOff      Int      @default(0)
   // Test accounts bypass the 1 punch-in / 1 punch-out per day limit
   isTestAccount  Boolean  @default(false)
   punches          Punch[]
@@ -147,6 +149,8 @@ model LeaveType {
   scope                LeaveScope
   paid                 Boolean      @default(true)
   carryForward         Boolean      @default(false)
+  // If true, unused balance expires at end of each month (use-it-or-lose-it per month)
+  monthlyExpiry        Boolean      @default(false)
   // Employee must be employed at least this many months before eligible
   eligibilityMinMonths Int          @default(0)
   approvalMode         ApprovalMode @default(MANUAL)
@@ -339,6 +343,7 @@ enum ApprovalMode {
 enum AccrualType {
   MONTHLY
   ANNUAL
+  MANUAL
 }
 
 enum RegType {

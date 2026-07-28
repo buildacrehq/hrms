@@ -1,8 +1,8 @@
 'use client';
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { ChevronLeft, ChevronRight, Search, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Users, Plus, X } from 'lucide-react';
 import { localDateStr } from '@/lib/utils';
 import Link from 'next/link';
 
@@ -15,8 +15,14 @@ type Punch = {
 type EmpType = 'MONTHLY_REGULAR' | 'DAILY_WAGE' | 'CONTRACT';
 type Employee = {
   id: string; name: string; phone: string;
+  gender: 'MALE' | 'FEMALE' | 'OTHER';
+  weeklyOff: number;
   employmentType: EmpType;
   defaultSite: { id: string; name: string } | null;
+};
+
+type LeaveType = {
+  id: string; name: string; scope: string; paid: boolean; accrual: string;
 };
 
 const EMP_TYPE_LABEL: Record<EmpType, string> = {
@@ -35,7 +41,7 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-// Tiny status box matching the individual attendance page style
+// Tiny status box
 function SBox({ code, content, variant }: {
   code: string; content: string;
   variant: 'green' | 'green-outline' | 'amber' | 'red' | 'teal' | 'violet' | 'slate' | 'ghost';
@@ -61,10 +67,157 @@ function SBox({ code, content, variant }: {
   );
 }
 
+// ─── Mark as Leave Modal ──────────────────────────────────────────────────────
+
+function MarkLeaveModal({
+  emp, date, leaveTypes, onClose, onSaved,
+}: {
+  emp: Employee; date: string;
+  leaveTypes: LeaveType[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const eligibleTypes = leaveTypes.filter(lt => {
+    if (lt.scope === 'FEMALE_ONLY' && emp.gender !== 'FEMALE') return false;
+    if (lt.scope === 'MALE_ONLY'   && emp.gender !== 'MALE')   return false;
+    return true;
+  });
+
+  const [leaveTypeId, setLeaveTypeId] = useState(eligibleTypes[0]?.id ?? '');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function save() {
+    if (!leaveTypeId) return setErr('Select a leave type');
+    setSaving(true); setErr('');
+    try {
+      await api.post('/admin/leaves/requests', {
+        employeeId: emp.id,
+        leaveTypeId,
+        fromDate: date,
+        toDate: date,
+        reason: reason || 'Marked by admin',
+      });
+      onSaved();
+    } catch (e: any) {
+      setErr(e?.response?.data?.message ?? 'Failed to mark leave');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div>
+            <h3 className="font-bold text-slate-800">Mark as Leave</h3>
+            <p className="text-xs text-slate-500 mt-0.5">{emp.name} · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Leave Type</label>
+            <select value={leaveTypeId} onChange={e => setLeaveTypeId(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              {eligibleTypes.map(lt => (
+                <option key={lt.id} value={lt.id}>{lt.name}{!lt.paid ? ' (Unpaid)' : ''}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Reason (optional)</label>
+            <input value={reason} onChange={e => setReason(e.target.value)}
+              placeholder="e.g. Sick, Personal"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          {err && <p className="text-red-500 text-xs">{err}</p>}
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+              Cancel
+            </button>
+            <button onClick={save} disabled={saving}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors">
+              {saving ? 'Marking…' : 'Mark Leave'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Comp Off Credit Modal ─────────────────────────────────────────────────────
+
+function CompOffModal({
+  emp, date, compOffTypeId, onClose, onSaved,
+}: {
+  emp: Employee; date: string; compOffTypeId: string;
+  onClose: () => void; onSaved: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function credit() {
+    setSaving(true); setErr('');
+    try {
+      await api.post('/admin/leaves/balances/adjust', {
+        employeeId: emp.id,
+        leaveTypeId: compOffTypeId,
+        credit: 1,
+      });
+      onSaved();
+    } catch (e: any) {
+      setErr(e?.response?.data?.message ?? 'Failed to credit Comp Off');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="font-bold text-slate-800">Credit Comp Off</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-slate-600">
+            Credit <strong>1 Comp Off day</strong> to <strong>{emp.name}</strong> for working on{' '}
+            {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short' })}?
+          </p>
+          <p className="text-xs text-slate-400">They can use it as a future day off.</p>
+          {err && <p className="text-red-500 text-xs">{err}</p>}
+          <div className="flex gap-3">
+            <button onClick={onClose}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+              Cancel
+            </button>
+            <button onClick={credit} disabled={saving}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 transition-colors">
+              {saving ? 'Crediting…' : '+ 1 Comp Off'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function AttendancePage() {
   const todayIso = localDateStr();
   const [date, setDate] = useState(todayIso);
   const [search, setSearch] = useState('');
+  const [markLeaveEmp, setMarkLeaveEmp]   = useState<Employee | null>(null);
+  const [compOffEmp,   setCompOffEmp]     = useState<Employee | null>(null);
+  const qc = useQueryClient();
 
   function shiftDate(days: number) {
     const d = new Date(date); d.setDate(d.getDate() + days);
@@ -92,17 +245,30 @@ export default function AttendancePage() {
     queryKey: ['holidays', date.slice(0, 4)],
     queryFn: () => api.get('/holidays', { params: { year: date.slice(0, 4) } }).then(r => r.data.data ?? r.data),
   });
+  const leaveTypesQ = useQuery<LeaveType[]>({
+    queryKey: ['leave-types-active'],
+    queryFn: () => api.get('/admin/leaves/types').then(r => r.data.data ?? r.data),
+    staleTime: 60_000,
+  });
 
   const activeEmployees: Employee[] = empQ.data?.employees?.filter((e: any) => e.status === 'ACTIVE') ?? [];
   const punches: Punch[] = punchQ.data?.punches ?? [];
+  const leaveTypes: LeaveType[] = leaveTypesQ.data ?? [];
+  const compOffTypeId = leaveTypes.find(lt => lt.accrual === 'MANUAL' && lt.id === 'lt-compoff')?.id
+    ?? leaveTypes.find(lt => lt.accrual === 'MANUAL')?.id ?? '';
 
-  /* ── leave set ── */
-  const leaveEmpIds = useMemo(() => {
-    const s = new Set<string>();
+  /* ── leave map: empId → {leaveTypeId, leaveTypeName} ── */
+  const leaveMap = useMemo(() => {
+    const m = new Map<string, { leaveTypeId: string; leaveTypeName: string }>();
     (leaveQ.data ?? []).forEach((lr: any) => {
-      if (date >= lr.fromDate.slice(0, 10) && date <= lr.toDate.slice(0, 10)) s.add(lr.employee.id);
+      if (date >= lr.fromDate.slice(0, 10) && date <= lr.toDate.slice(0, 10)) {
+        m.set(lr.employee.id, {
+          leaveTypeId: lr.leaveType?.id ?? '',
+          leaveTypeName: lr.leaveType?.name ?? 'Leave',
+        });
+      }
     });
-    return s;
+    return m;
   }, [leaveQ.data, date]);
 
   /* ── holiday check ── */
@@ -110,7 +276,7 @@ export default function AttendancePage() {
     return (holidayQ.data ?? []).some((h: any) => h.date.slice(0, 10) === date);
   }, [holidayQ.data, date]);
 
-  const isWeeklyOff = new Date(date + 'T00:00:00').getDay() === 0; // Sunday
+  const dayOfWeek = new Date(date + 'T00:00:00').getDay();
 
   /* ── per-employee punch map ── */
   type EmpPunches = { approvedIn?: Punch; approvedOut?: Punch; pendingIn?: Punch; pendingOut?: Punch };
@@ -132,11 +298,11 @@ export default function AttendancePage() {
 
   /* ── per-employee day status ── */
   type DayStatus = 'P' | 'HD' | 'A' | 'L' | 'H' | 'W' | 'PEND';
-  function getStatus(empId: string): DayStatus {
-    if (isHoliday)                   return 'H';
-    if (leaveEmpIds.has(empId))      return 'L';
-    if (isWeeklyOff)                 return 'W';
-    const slot = punchMap.get(empId);
+  function getStatus(emp: Employee): DayStatus {
+    if (isHoliday)                      return 'H';
+    if (leaveMap.has(emp.id))           return 'L';
+    if (dayOfWeek === emp.weeklyOff)    return 'W';
+    const slot = punchMap.get(emp.id);
     if (!slot) return 'A';
     if (slot.approvedIn && slot.approvedOut) return 'P';
     if (slot.approvedIn) return 'HD';
@@ -148,7 +314,7 @@ export default function AttendancePage() {
   const stats = useMemo(() => {
     let present = 0, absent = 0, halfDay = 0, onLeave = 0, punchedIn = 0, punchedOut = 0, pending = 0;
     activeEmployees.forEach(e => {
-      const s = getStatus(e.id);
+      const s = getStatus(e);
       if (s === 'P')    { present++;  punchedIn++; punchedOut++; }
       if (s === 'HD')   { halfDay++;  punchedIn++; }
       if (s === 'A')    absent++;
@@ -156,7 +322,7 @@ export default function AttendancePage() {
       if (s === 'PEND') { pending++;  punchedIn++; }
     });
     return { present, absent, halfDay, onLeave, punchedIn, punchedOut, pending };
-  }, [activeEmployees, punchMap, leaveEmpIds, isHoliday, isWeeklyOff]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeEmployees, punchMap, leaveMap, isHoliday, dayOfWeek]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── filtered list ── */
   const filtered = useMemo(() => {
@@ -172,6 +338,13 @@ export default function AttendancePage() {
   });
 
   const isLoading = empQ.isLoading || punchQ.isLoading;
+
+  function onActionDone() {
+    setMarkLeaveEmp(null);
+    setCompOffEmp(null);
+    qc.invalidateQueries({ queryKey: ['att-leaves'] });
+    qc.invalidateQueries({ queryKey: ['leave-balances'] });
+  }
 
   return (
     <div className="min-h-full bg-slate-50">
@@ -243,9 +416,9 @@ export default function AttendancePage() {
         )}
 
         {/* Holiday / Week Off banner */}
-        {(isHoliday || isWeeklyOff) && (
+        {isHoliday && (
           <div className="bg-violet-50 border border-violet-200 rounded-2xl px-5 py-3 text-sm font-semibold text-violet-800">
-            {isHoliday ? '🎉 This day is a holiday' : '📅 Sunday — weekly off'}
+            🎉 This day is a holiday
           </div>
         )}
 
@@ -274,26 +447,58 @@ export default function AttendancePage() {
           <EmpGroupedList
             employees={filtered}
             punchMap={punchMap}
+            leaveMap={leaveMap}
+            leaveTypes={leaveTypes}
             getStatus={getStatus}
+            isHoliday={isHoliday}
+            date={date}
+            onMarkLeave={setMarkLeaveEmp}
+            onCompOff={setCompOffEmp}
           />
         )}
       </div>
+
+      {markLeaveEmp && (
+        <MarkLeaveModal
+          emp={markLeaveEmp}
+          date={date}
+          leaveTypes={leaveTypes}
+          onClose={() => setMarkLeaveEmp(null)}
+          onSaved={onActionDone}
+        />
+      )}
+
+      {compOffEmp && compOffTypeId && (
+        <CompOffModal
+          emp={compOffEmp}
+          date={date}
+          compOffTypeId={compOffTypeId}
+          onClose={() => setCompOffEmp(null)}
+          onSaved={onActionDone}
+        />
+      )}
     </div>
   );
 }
 
 /* ── Grouped employee list ───────────────────────────────────── */
 type EmpPunchMap = Map<string, { approvedIn?: any; approvedOut?: any; pendingIn?: any; pendingOut?: any }>;
+type LeaveInfoMap = Map<string, { leaveTypeId: string; leaveTypeName: string }>;
 type DayStatus = 'P' | 'HD' | 'A' | 'L' | 'H' | 'W' | 'PEND';
 
 function EmpGroupedList({
-  employees, punchMap, getStatus,
+  employees, punchMap, leaveMap, leaveTypes, getStatus, isHoliday, date, onMarkLeave, onCompOff,
 }: {
   employees: Employee[];
   punchMap: EmpPunchMap;
-  getStatus: (id: string) => DayStatus;
+  leaveMap: LeaveInfoMap;
+  leaveTypes: LeaveType[];
+  getStatus: (emp: Employee) => DayStatus;
+  isHoliday: boolean;
+  date: string;
+  onMarkLeave: (emp: Employee) => void;
+  onCompOff: (emp: Employee) => void;
 }) {
-  // Group by employmentType
   const groups = useMemo(() => {
     const order: EmpType[] = ['MONTHLY_REGULAR', 'DAILY_WAGE', 'CONTRACT'];
     const map = new Map<EmpType, Employee[]>();
@@ -309,13 +514,23 @@ function EmpGroupedList({
     <div className="space-y-4">
       {groups.map(({ type, emps }) => (
         <div key={type} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-          {/* Group header */}
           <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 bg-slate-50">
             <span className="text-sm font-bold text-slate-700">{EMP_TYPE_LABEL[type]}</span>
             <span className="text-xs font-semibold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{emps.length}</span>
           </div>
           <div className="divide-y divide-slate-100">
-            {emps.map(emp => <EmpRow key={emp.id} emp={emp} slot={punchMap.get(emp.id) ?? {}} status={getStatus(emp.id)} />)}
+            {emps.map(emp => (
+              <EmpRow
+                key={emp.id}
+                emp={emp}
+                slot={punchMap.get(emp.id) ?? {}}
+                leaveInfo={leaveMap.get(emp.id)}
+                status={getStatus(emp)}
+                isHoliday={isHoliday}
+                onMarkLeave={() => onMarkLeave(emp)}
+                onCompOff={() => onCompOff(emp)}
+              />
+            ))}
           </div>
         </div>
       ))}
@@ -323,7 +538,19 @@ function EmpGroupedList({
   );
 }
 
-function EmpRow({ emp, slot, status }: { emp: Employee; slot: any; status: DayStatus }) {
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function EmpRow({
+  emp, slot, leaveInfo, status, isHoliday, onMarkLeave, onCompOff,
+}: {
+  emp: Employee;
+  slot: any;
+  leaveInfo: { leaveTypeId: string; leaveTypeName: string } | undefined;
+  status: DayStatus;
+  isHoliday: boolean;
+  onMarkLeave: () => void;
+  onCompOff: () => void;
+}) {
   const inTime  = slot.approvedIn  ? fmtTime(slot.approvedIn.timestampServer)  : null;
   const outTime = slot.approvedOut ? fmtTime(slot.approvedOut.timestampServer) : null;
   const pendIn  = slot.pendingIn   ? fmtTime(slot.pendingIn.timestampServer)   : null;
@@ -335,32 +562,66 @@ function EmpRow({ emp, slot, status }: { emp: Employee; slot: any; status: DaySt
   else if (status === 'HD' && inTime)      { pVariant = 'green-outline'; pContent = `${inTime} - NA`; }
   else if (status === 'PEND' && pendIn)    { pVariant = 'amber';         pContent = `${pendIn} - ${pendOut ?? 'NA'}`; }
 
-  let lastCode = 'L'; let lastContent = 'Leave'; let lastVariant: 'amber' | 'violet' | 'slate' | 'ghost' = 'ghost';
-  if (status === 'L') { lastVariant = 'amber';  lastContent = 'Leave'; }
+  // Leave / Holiday / Weekly Off last box
+  const leaveTypeName = leaveInfo?.leaveTypeName ?? 'Leave';
+  const leaveCode = leaveInfo
+    ? leaveTypeName.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 3)
+    : 'L';
+  let lastCode = leaveCode; let lastContent = leaveTypeName; let lastVariant: 'amber' | 'violet' | 'slate' | 'ghost' = 'ghost';
+  if (status === 'L') { lastVariant = 'amber'; }
   if (status === 'H') { lastVariant = 'violet'; lastCode = 'H'; lastContent = 'Holiday'; }
-  if (status === 'W') { lastVariant = 'slate';  lastCode = 'W'; lastContent = 'Week Off'; }
+  if (status === 'W') { lastVariant = 'slate';  lastCode = 'W'; lastContent = `${DAY_NAMES[emp.weeklyOff]} Off`; }
+
+  // Can mark leave: only on Absent days (not holiday/weekly-off)
+  const canMarkLeave = status === 'A';
+  // Can credit Comp Off: employee worked on a holiday or their weekly off
+  const canCreditCompOff = (status === 'P' || status === 'HD') && (isHoliday || false);
+  // Also if today is the employee's weekly off and they punched in
+  const isEmpWeeklyOff = status === 'W';
+  const workedOnWeeklyOff = isEmpWeeklyOff && (slot.approvedIn || slot.pendingIn);
 
   return (
-    <Link href={`/employees/${emp.id}/attendance`}
-      className="flex items-center gap-5 px-5 py-3.5 hover:bg-slate-50/70 transition-colors">
-      <div className="flex items-center gap-3 w-44 shrink-0">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0"
-          style={{ background: avatarBg(emp.name) }}>
-          {emp.name[0]?.toUpperCase()}
+    <div className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/70 transition-colors">
+      <Link href={`/employees/${emp.id}/attendance`} className="flex items-center gap-5 flex-1 min-w-0">
+        <div className="flex items-center gap-3 w-44 shrink-0">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0"
+            style={{ background: avatarBg(emp.name) }}>
+            {emp.name[0]?.toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-900 truncate">{emp.name}</div>
+            <div className="text-xs text-slate-400 truncate">{emp.defaultSite?.name ?? emp.phone}</div>
+          </div>
         </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-slate-900 truncate">{emp.name}</div>
-          <div className="text-xs text-slate-400 truncate">{emp.defaultSite?.name ?? emp.phone}</div>
+        <div className="flex-1 grid grid-cols-3 gap-2">
+          <SBox code="P"  content={pContent}    variant={pVariant} />
+          <SBox code="HD" content="Half Day"    variant={status === 'HD' ? 'teal'  : 'ghost'} />
+          <SBox code="A"  content="Absent"      variant={status === 'A'  ? 'red'   : 'ghost'} />
+          <SBox code="F"  content="Fine"        variant="ghost" />
+          <SBox code="OT" content="Overtime"    variant="ghost" />
+          <SBox code={lastCode} content={lastContent} variant={lastVariant} />
         </div>
+      </Link>
+
+      {/* Action buttons — don't navigate */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        {canMarkLeave && (
+          <button
+            onClick={e => { e.preventDefault(); e.stopPropagation(); onMarkLeave(); }}
+            title="Mark as Leave"
+            className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-100 transition-colors whitespace-nowrap">
+            <Plus size={11} />Leave
+          </button>
+        )}
+        {(canCreditCompOff || workedOnWeeklyOff) && (
+          <button
+            onClick={e => { e.preventDefault(); e.stopPropagation(); onCompOff(); }}
+            title="Credit Comp Off"
+            className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-100 transition-colors whitespace-nowrap">
+            <Plus size={11} />Comp
+          </button>
+        )}
       </div>
-      <div className="flex-1 grid grid-cols-3 gap-2">
-        <SBox code="P"  content={pContent}    variant={pVariant} />
-        <SBox code="HD" content="Half Day"    variant={status === 'HD' ? 'teal'  : 'ghost'} />
-        <SBox code="A"  content="Absent"      variant={status === 'A'  ? 'red'   : 'ghost'} />
-        <SBox code="F"  content="Fine"        variant="ghost" />
-        <SBox code="OT" content="Overtime"    variant="ghost" />
-        <SBox code={lastCode} content={lastContent} variant={lastVariant} />
-      </div>
-    </Link>
+    </div>
   );
 }

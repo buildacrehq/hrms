@@ -2,7 +2,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState, useEffect } from 'react';
-import { Building2, Clock, ShieldCheck, Camera, Bell, CalendarDays, Save, CheckCircle2, KeyRound, Lock } from 'lucide-react';
+import { Building2, Clock, ShieldCheck, Camera, Bell, CalendarDays, Save, CheckCircle2, KeyRound, Lock, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 
 type LocalSettings = Record<string, string>;
 
@@ -42,13 +43,7 @@ const SECTIONS = [
     description: 'Reminders sent to employees',
     keys: ['punchin_reminder_enabled', 'punchout_reminder_buffer'],
   },
-  {
-    id: 'leave',
-    label: 'Leave Policy',
-    icon: CalendarDays,
-    description: 'Monthly leave entitlements',
-    keys: ['cl_days_per_month', 'fl_days_per_month'],
-  },
+  // Leave Policy is now a dynamic section rendered separately
   {
     id: 'security',
     label: 'Security',
@@ -193,6 +188,111 @@ function ChangePasswordSection() {
   );
 }
 
+// ─── Leave Policy Section (read-only, data from leave types API) ─────────────
+
+const SCOPE_LABEL: Record<string, string> = {
+  ALL: 'All employees', MALE_ONLY: 'Male only',
+  FEMALE_ONLY: 'Female only', CUSTOM: 'Custom',
+};
+
+function LeavePolicySection() {
+  const { data: leaveTypes = [], isLoading } = useQuery<any[]>({
+    queryKey: ['leave-types-settings'],
+    queryFn: () => api.get('/admin/leaves/types').then(r => r.data.data ?? r.data),
+    staleTime: 30_000,
+  });
+
+  function accrualLabel(lt: any) {
+    if (lt.accrual === 'MANUAL') return 'Admin credits';
+    if (lt.accrual === 'MONTHLY') return '1/month';
+    return 'Annual';
+  }
+
+  function balanceRule(lt: any) {
+    if (lt.accrual === 'MANUAL') return '—';
+    if (lt.monthlyExpiry) return 'Expires end of month';
+    if (lt.carryForward) return 'Carries Jan – Dec';
+    return 'No carry';
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
+            <CalendarDays size={16} />
+          </div>
+          <div>
+            <h2 className="font-semibold text-slate-900 text-sm">Leave Policy</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Configured leave types and their rules</p>
+          </div>
+        </div>
+        <Link href="/leaves?tab=types"
+          className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-xl transition-colors">
+          <ExternalLink size={12} />Manage
+        </Link>
+      </div>
+
+      {isLoading ? (
+        <div className="px-6 py-8 text-center text-slate-400 text-sm">Loading…</div>
+      ) : leaveTypes.length === 0 ? (
+        <div className="px-6 py-8 text-center text-slate-400 text-sm">
+          No leave types configured.{' '}
+          <Link href="/leaves" className="text-blue-600 hover:underline">Set them up →</Link>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 text-xs font-semibold uppercase tracking-wide">
+                <th className="text-left px-6 py-2.5">Leave Type</th>
+                <th className="text-left px-4 py-2.5">Applies to</th>
+                <th className="text-left px-4 py-2.5">Accrual</th>
+                <th className="text-left px-4 py-2.5">Balance rule</th>
+                <th className="text-left px-4 py-2.5">Paid</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leaveTypes.map((lt: any) => (
+                <tr key={lt.id} className="border-t border-slate-100">
+                  <td className="px-6 py-3">
+                    <div className="font-semibold text-slate-800">{lt.name}</div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 text-xs">{SCOPE_LABEL[lt.scope] ?? lt.scope}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                      lt.accrual === 'MANUAL'
+                        ? 'bg-amber-50 text-amber-700 border-amber-100'
+                        : 'bg-blue-50 text-blue-700 border-blue-100'
+                    }`}>
+                      {accrualLabel(lt)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-medium ${
+                      lt.monthlyExpiry ? 'text-pink-600'
+                      : lt.carryForward ? 'text-emerald-600'
+                      : lt.accrual === 'MANUAL' ? 'text-slate-400'
+                      : 'text-slate-500'
+                    }`}>
+                      {balanceRule(lt)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-semibold ${lt.paid ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {lt.paid ? 'Yes' : 'No'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const qc = useQueryClient();
   const [local, setLocal]       = useState<LocalSettings>({});
@@ -317,6 +417,7 @@ export default function SettingsPage() {
           );
         })}
 
+        <LeavePolicySection />
         <ChangePasswordSection />
       </div>
     </div>

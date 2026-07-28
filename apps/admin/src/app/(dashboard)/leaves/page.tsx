@@ -17,10 +17,11 @@ interface LeaveType {
   scope: 'ALL' | 'MALE_ONLY' | 'FEMALE_ONLY' | 'CUSTOM';
   paid: boolean;
   carryForward: boolean;
+  monthlyExpiry: boolean;
   eligibilityMinMonths: number;
   approvalMode: 'AUTO' | 'MANUAL';
   maxConsecutiveDays: number | null;
-  accrual: 'MONTHLY' | 'ANNUAL';
+  accrual: 'MONTHLY' | 'ANNUAL' | 'MANUAL';
   isActive: boolean;
   _count: { requests: number };
 }
@@ -94,6 +95,7 @@ function LeaveTypeModal({
     scope: initial?.scope ?? 'ALL',
     paid: initial?.paid ?? true,
     carryForward: initial?.carryForward ?? false,
+    monthlyExpiry: initial?.monthlyExpiry ?? false,
     eligibilityMinMonths: initial?.eligibilityMinMonths ?? 0,
     approvalMode: initial?.approvalMode ?? 'MANUAL',
     maxConsecutiveDays: initial?.maxConsecutiveDays ?? '',
@@ -140,9 +142,10 @@ function LeaveTypeModal({
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Accrual</label>
             <select className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={form.accrual} onChange={e => setForm(f => ({ ...f, accrual: e.target.value as any }))}>
-              <option value="ANNUAL">Annual</option>
-              <option value="MONTHLY">Monthly</option>
+              value={form.accrual} onChange={e => setForm(f => ({ ...f, accrual: e.target.value as any, monthlyExpiry: e.target.value !== 'MONTHLY' ? false : f.monthlyExpiry }))}>
+              <option value="MONTHLY">Monthly (auto-accrued)</option>
+              <option value="ANNUAL">Annual (one-time)</option>
+              <option value="MANUAL">Manual (admin credits)</option>
             </select>
           </div>
         </div>
@@ -183,17 +186,26 @@ function LeaveTypeModal({
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-5">
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={form.paid} onChange={e => setForm(f => ({ ...f, paid: e.target.checked }))}
               className="w-4 h-4 rounded accent-blue-600" />
             <span className="text-sm text-slate-700">Paid leave</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={form.carryForward} onChange={e => setForm(f => ({ ...f, carryForward: e.target.checked }))}
-              className="w-4 h-4 rounded accent-blue-600" />
-            <span className="text-sm text-slate-700">Carry forward</span>
-          </label>
+          {form.accrual !== 'MANUAL' && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.carryForward} onChange={e => setForm(f => ({ ...f, carryForward: e.target.checked }))}
+                className="w-4 h-4 rounded accent-blue-600" />
+              <span className="text-sm text-slate-700">Carry forward (Jan–Dec)</span>
+            </label>
+          )}
+          {form.accrual === 'MONTHLY' && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.monthlyExpiry} onChange={e => setForm(f => ({ ...f, monthlyExpiry: e.target.checked, carryForward: e.target.checked ? false : f.carryForward }))}
+                className="w-4 h-4 rounded accent-pink-600" />
+              <span className="text-sm text-slate-700">Expires end of month</span>
+            </label>
+          )}
         </div>
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -653,13 +665,23 @@ function TypesTab() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h3 className="font-bold text-slate-800 text-base">{t.name}</h3>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${SCOPE_COLOR[t.scope]}`}>
                       {SCOPE_LABEL[t.scope]}
                     </span>
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${t.paid ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
                       {t.paid ? 'Paid' : 'Unpaid'}
                     </span>
+                    {t.monthlyExpiry && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-pink-50 text-pink-700 border-pink-100">
+                        Expires monthly
+                      </span>
+                    )}
+                    {t.accrual === 'MANUAL' && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-100">
+                        Admin credits
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -672,8 +694,19 @@ function TypesTab() {
 
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <div className="bg-slate-50 rounded-xl p-3">
-                  <div className="text-2xl font-bold text-blue-600">{t.daysEntitled}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">days / {t.accrual.toLowerCase()}</div>
+                  {t.accrual === 'MANUAL' ? (
+                    <>
+                      <div className="text-base font-bold text-amber-600 leading-tight">Manual</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">admin credits</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-2xl font-bold text-blue-600">{t.daysEntitled}</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        days / {t.accrual === 'MONTHLY' ? 'year (monthly)' : 'year'}
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="bg-slate-50 rounded-xl p-3">
                   <div className="text-2xl font-bold text-slate-700">{t._count.requests}</div>
@@ -698,12 +731,14 @@ function TypesTab() {
                     <span className="font-medium text-slate-700">{t.maxConsecutiveDays} days</span>
                   </div>
                 )}
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>Carry forward</span>
-                  <span className={`font-medium ${t.carryForward ? 'text-emerald-600' : 'text-slate-400'}`}>
-                    {t.carryForward ? 'Yes' : 'No'}
-                  </span>
-                </div>
+                {t.accrual !== 'MANUAL' && (
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>Balance rule</span>
+                    <span className={`font-medium ${t.monthlyExpiry ? 'text-pink-600' : t.carryForward ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {t.monthlyExpiry ? 'Expires monthly' : t.carryForward ? 'Carry Jan–Dec' : 'No carry'}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between">
