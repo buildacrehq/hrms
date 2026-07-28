@@ -17,18 +17,24 @@ GoRouter router(Ref ref) {
   final authState = ref.watch(authNotifierProvider);
 
   return GoRouter(
+    initialLocation: '/splash',
     refreshListenable: _AuthListenable(ref),
     redirect: (context, state) {
       final status = authState.status;
       final path = state.matchedLocation;
-      if (status == AuthStatus.unknown) return null;
+      // Still checking stored token — hold on splash, never show login
+      if (status == AuthStatus.unknown) {
+        return path == '/splash' ? null : '/splash';
+      }
       if (status == AuthStatus.unauthenticated && path != '/login') return '/login';
       if (status == AuthStatus.authenticated && path == '/login') return '/home';
+      if (status == AuthStatus.authenticated && path == '/splash') return '/home';
       return null;
     },
     routes: [
+      GoRoute(path: '/splash', builder: (_, __) => const _SplashScreen()),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/', redirect: (_, __) => '/login'),
+      GoRoute(path: '/', redirect: (_, __) => '/splash'),
       StatefulShellRoute.indexedStack(
         builder: (ctx, state, shell) => MainScaffold(navigationShell: shell),
         branches: [
@@ -53,5 +59,13 @@ GoRouter router(Ref ref) {
 class _AuthListenable extends ChangeNotifier {
   _AuthListenable(Ref ref) {
     ref.listen(authNotifierProvider, (_, __) => notifyListeners());
+  }
+}
+
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }

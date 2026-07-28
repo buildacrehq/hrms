@@ -340,7 +340,7 @@ class _PunchRowState extends State<_PunchRow> {
   void _showPhoto(String url) {
     showDialog(
       context: context,
-      builder: (_) => Dialog(
+      builder: (dialogCtx) => Dialog(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -350,7 +350,7 @@ class _PunchRowState extends State<_PunchRow> {
                         padding: EdgeInsets.all(40),
                         child: CircularProgressIndicator())),
           ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Close')),
         ]),
       ),
     );
