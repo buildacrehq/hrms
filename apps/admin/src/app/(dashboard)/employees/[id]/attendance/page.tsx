@@ -528,11 +528,13 @@ function GrantLeaveModal({ emp, leaveTypes, initialDate, onClose, onSaved }: {
 
 /* ── Daily View ──────────────────────────────────────────────── */
 function SBox({
-  code, content, variant,
+  code, content, variant, onClick, active,
 }: {
   code: string;
   content: string;
   variant: 'green' | 'green-outline' | 'amber' | 'red' | 'teal' | 'violet' | 'slate' | 'ghost';
+  onClick?: () => void;
+  active?: boolean;
 }) {
   const styles: Record<string, { bg: string; border: string; codeClr: string; contentClr: string }> = {
     'green':        { bg: '#16a34a', border: '#16a34a', codeClr: '#fff',     contentClr: '#fff'     },
@@ -545,13 +547,16 @@ function SBox({
     'ghost':        { bg: '#f8fafc', border: '#e2e8f0', codeClr: '#94a3b8',  contentClr: '#94a3b8'  },
   };
   const s = styles[variant];
+  const Tag = onClick ? 'button' : 'div';
   return (
-    <div className="flex items-center rounded-lg overflow-hidden text-xs font-semibold"
+    <Tag
+      {...(onClick ? { onClick, type: 'button' as const } : {})}
+      className={`flex items-center rounded-lg overflow-hidden text-xs font-semibold w-full text-left transition-opacity ${onClick ? 'hover:opacity-80 cursor-pointer' : ''} ${active ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
       style={{ border: `1.5px solid ${s.border}`, background: s.bg, minHeight: 32 }}>
       <span className="px-2 py-1.5 shrink-0" style={{ color: s.codeClr }}>{code}</span>
       <span className="w-px self-stretch" style={{ background: s.border }} />
       <span className="px-2 py-1.5 flex-1 truncate" style={{ color: s.contentClr }}>{content}</span>
-    </div>
+    </Tag>
   );
 }
 
@@ -655,10 +660,10 @@ function PunchTimeRow({ punch, label, onOverride }: {
             </span>
           )}
           <button onClick={startEdit} title="Override time"
-            className="w-5 h-5 flex items-center justify-center rounded text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
-            <Edit2 size={11} />
+            className="flex items-center gap-1 text-[10px] font-medium text-slate-500 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-1.5 py-0.5 rounded transition-colors">
+            <Edit2 size={10} />Override
           </button>
-          {label === 'IN' && punch.photoKey && (
+          {punch.photoKey && (
             <button onClick={() => setPhoto(true)} title="View selfie"
               className="flex items-center gap-1 text-[10px] font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded transition-colors">
               <Camera size={10} />Selfie
@@ -761,7 +766,8 @@ function DailyView({
   onPunchTimeOverride: () => void;
   onMarkLeave: (date: string) => void;
   onRemoveLeave: (leaveId: string) => void;
-}) {
+})
+ {
   const DOW_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const visible   = [...days].filter(d => d.status !== 'FUT').reverse();
   const notesMap  = useMemo(() => {
@@ -829,14 +835,18 @@ function DailyView({
 
               {/* Right section */}
               <div className="flex-1 min-w-0">
-                {/* Status boxes */}
+                {/* Status boxes — L box always opens Grant Leave; P/HD/A/F/OT are computed display */}
                 <div className="grid grid-cols-3 gap-2">
                   <SBox code="P"  content={pContent}   variant={pVariant} />
                   <SBox code="HD" content="Half Day"   variant={d.status === 'HD' ? 'teal' : 'ghost'} />
                   <SBox code="A"  content="Absent"     variant={d.status === 'A'  ? 'red'  : 'ghost'} />
                   <SBox code="F"  content="Fine"       variant="ghost" />
                   <SBox code="OT" content="Overtime"   variant="ghost" />
-                  <SBox code={lastCode} content={lastContent} variant={lastVariant} />
+                  <SBox
+                    code={lastCode} content={lastContent} variant={lastVariant}
+                    onClick={d.status !== 'H' && d.status !== 'W' && d.status !== 'FUT' ? () => onMarkLeave(d.dateStr) : undefined}
+                    active={d.status === 'L' || d.status === 'LP'}
+                  />
                 </div>
 
                 {/* Punch IN / OUT detail rows */}
