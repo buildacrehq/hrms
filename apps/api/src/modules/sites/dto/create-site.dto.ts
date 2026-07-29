@@ -10,4 +10,9 @@ export class CreateSiteDto {
   @IsString()
   @IsOptional()
   address?: string;
+
+  @ApiPropertyOptional({ example: 'https://maps.app.goo.gl/...' })
+  @IsString()
+  @IsOptional()
+  mapsUrl?: string;
 }

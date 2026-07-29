@@ -11,4 +11,9 @@ export class UpdateSiteDto {
   @IsString()
   @IsOptional()
   address?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  mapsUrl?: string;
 }

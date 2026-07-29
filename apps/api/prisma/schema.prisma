@@ -62,6 +62,7 @@ model Site {
   id        String     @id @default(cuid())
   name      String
   address   String?
+  mapsUrl   String?
   status    SiteStatus @default(ACTIVE)
   employees Employee[]
   punches   Punch[]

@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState, useEffect } from 'react';
-import { Building2, Clock, ShieldCheck, Camera, Bell, CalendarDays, Save, CheckCircle2, KeyRound, Lock, ExternalLink, Smartphone } from 'lucide-react';
+import { Building2, Clock, ShieldCheck, Camera, Bell, CalendarDays, Save, CheckCircle2, KeyRound, Lock, ExternalLink, Smartphone, MapPin, Plus, X, Users } from 'lucide-react';
 import Link from 'next/link';
 
 type LocalSettings = Record<string, string>;
@@ -304,6 +304,119 @@ function LeavePolicySection() {
   );
 }
 
+// ─── Sites Section ────────────────────────────────────────────────────────────
+
+type Site = { id: string; name: string; address: string | null; mapsUrl: string | null; status: string; _count: { employees: number } };
+
+function SitesSection() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ name: '', address: '', mapsUrl: '' });
+
+  const sitesQ = useQuery<Site[]>({
+    queryKey: ['sites'],
+    queryFn: () => api.get('/admin/sites').then(r => r.data.data),
+  });
+
+  const createM = useMutation({
+    mutationFn: () => api.post('/admin/sites', form),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sites'] });
+      setShowAdd(false);
+      setForm({ name: '', address: '', mapsUrl: '' });
+    },
+  });
+
+  const inp = 'w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500';
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
+            <Building2 size={16} />
+          </div>
+          <div>
+            <h2 className="font-semibold text-slate-900 text-sm">Sites / Locations</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Office, field sites — assign employees to sites</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowAdd(v => !v)}
+            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-xl transition-colors">
+            <Plus size={12} />Add
+          </button>
+          <Link href="/sites"
+            className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-xl transition-colors">
+            <ExternalLink size={12} />Manage
+          </Link>
+        </div>
+      </div>
+
+      {showAdd && (
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+              placeholder="Site name *" className={inp} />
+            <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })}
+              placeholder="Address (optional)" className={inp} />
+            <input value={form.mapsUrl} onChange={e => setForm({ ...form, mapsUrl: e.target.value })}
+              placeholder="Maps URL (optional)" className={inp} />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => createM.mutate()} disabled={createM.isPending || !form.name}
+              className="text-xs font-semibold px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40 transition-colors">
+              {createM.isPending ? 'Saving…' : 'Create Site'}
+            </button>
+            <button onClick={() => setShowAdd(false)}
+              className="text-xs text-slate-500 px-3 py-2 rounded-xl hover:bg-slate-100 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sitesQ.isLoading ? (
+        <div className="px-6 py-6 text-center text-slate-400 text-sm">Loading…</div>
+      ) : (sitesQ.data ?? []).length === 0 ? (
+        <div className="px-6 py-6 text-center text-slate-400 text-sm">No sites yet. Add one above.</div>
+      ) : (
+        <div className="divide-y divide-slate-50">
+          {(sitesQ.data ?? []).map(s => (
+            <div key={s.id} className="flex items-center gap-4 px-6 py-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                <Building2 size={14} className="text-blue-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-slate-800">{s.name}</span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {s.status}
+                  </span>
+                </div>
+                {s.address && (
+                  <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+                    <MapPin size={10} />{s.address}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-1 text-xs text-slate-400 shrink-0">
+                <Users size={12} />{s._count.employees}
+              </div>
+              {s.mapsUrl && (
+                <a href={s.mapsUrl} target="_blank" rel="noreferrer"
+                  className="text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1 shrink-0 transition-colors">
+                  <ExternalLink size={11} />Map
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const qc = useQueryClient();
   const [local, setLocal]       = useState<LocalSettings>({});
@@ -428,6 +541,7 @@ export default function SettingsPage() {
           );
         })}
 
+        <SitesSection />
         <LeavePolicySection />
         <ChangePasswordSection />
       </div>

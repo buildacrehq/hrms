@@ -96,7 +96,12 @@ function Field({ label, icon: Icon, value, onSave, type = 'text', options }: {
         ) : (
           <button onClick={() => { setVal(value); setEditing(true); }}
             className="flex items-center gap-2 group text-left w-full">
-            <span className="text-sm font-semibold text-slate-800">{value || <span className="text-slate-400 font-normal italic">Not set</span>}</span>
+            <span className="text-sm font-semibold text-slate-800">
+              {type === 'select' && options
+                ? (options.find(o => o.value === value)?.label || <span className="text-slate-400 font-normal italic">Not set</span>)
+                : (value || <span className="text-slate-400 font-normal italic">Not set</span>)
+              }
+            </span>
             <Pencil size={12} className="text-slate-300 group-hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100" />
           </button>
         )}
