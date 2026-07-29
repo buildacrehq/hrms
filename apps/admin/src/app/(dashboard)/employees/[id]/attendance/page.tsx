@@ -42,7 +42,7 @@ type RegReq = {
   reason: string; status: 'PENDING' | 'APPROVED' | 'REJECTED';
   rejectionReason: string | null;
 };
-type DayStatus  = 'P' | 'A' | 'W' | 'H' | 'L' | 'LP' | 'HD' | 'PEND' | 'FUT';
+type DayStatus  = 'P' | 'A' | 'W' | 'H' | 'L' | 'LP' | 'HD' | 'F' | 'OT' | 'PEND' | 'FUT';
 type DayData    = {
   day: number; dateStr: string; dow: number; status: DayStatus;
   punchIn: Punch | undefined; punchOut: Punch | undefined;
@@ -58,6 +58,8 @@ const STATUS_META: Record<DayStatus, { label: string; bg: string; text: string }
   L:    { label: 'On Leave',  bg: '#fef3c7', text: '#92400e' },
   LP:   { label: 'Leave (P)', bg: '#fef9c3', text: '#a16207' },
   HD:   { label: 'Half Day',  bg: '#d1fae5', text: '#065f46' },
+  F:    { label: 'Fine',      bg: '#fef3c7', text: '#92400e' },
+  OT:   { label: 'Overtime',  bg: '#e0f2fe', text: '#0369a1' },
   PEND: { label: 'Pending',   bg: '#fef3c7', text: '#b45309' },
   FUT:  { label: '—',         bg: '#f8fafc', text: '#cbd5e1' },
 };
@@ -204,6 +206,20 @@ export default function EmployeeAttendancePage() {
     return { leaveDays: ld, leavePendingDays: lp, leaveNames: ln };
   }, [leaveQ.data]);
 
+  // Parse override notes: format "__OV:HD:reason" stored in DayNote
+  const overrideMap = useMemo(() => {
+    const m: Record<string, { status: DayStatus; reason: string }> = {};
+    (notesQ.data ?? []).forEach(n => {
+      if (n.note.startsWith('__OV:')) {
+        const parts = n.note.slice(5).split(':');
+        const s = parts[0] as DayStatus;
+        const r = parts.slice(1).join(':');
+        if (['HD','A','F','OT','P'].includes(s)) m[n.date] = { status: s, reason: r };
+      }
+    });
+    return m;
+  }, [notesQ.data]);
+
   /* ── per-day computation ── */
   const days: DayData[] = useMemo(() => {
     return Array.from({ length: lastDay }, (_, i) => {
@@ -212,11 +228,12 @@ export default function EmployeeAttendancePage() {
       const dow     = new Date(year, month, day).getDay();
 
       let status: DayStatus;
-      if (dateStr > today)             status = 'FUT';
+      if (dateStr > today)              status = 'FUT';
       else if (holidaySet.has(dateStr)) status = 'H';
       else if (leaveDays.has(dateStr))  status = 'L';
       else if (leavePendingDays.has(dateStr)) status = 'LP';
-      else if (dow === 0)              status = 'W';
+      else if (overrideMap[dateStr])    status = overrideMap[dateStr].status; // admin override
+      else if (dow === 0)               status = 'W';
       else {
         const dayPunches = punches.filter(p => toLocalDate(p.timestampServer) === dateStr);
         if (dayPunches.length === 0) {
@@ -245,7 +262,7 @@ export default function EmployeeAttendancePage() {
         pending,
       };
     });
-  }, [year, month, lastDay, punches, holidaySet, leaveDays, leavePendingDays, today]);
+  }, [year, month, lastDay, punches, holidaySet, leaveDays, leavePendingDays, today, overrideMap]);
 
   const stats = useMemo(() => {
     let present = 0, absent = 0, weekOff = 0, holidays = 0, leaves = 0,
@@ -429,11 +446,13 @@ export default function EmployeeAttendancePage() {
       ) : tab === 'daily' ? (
         <DailyView days={days} holidayNames={holidayNames} leaveNames={leaveNames} empId={id}
           notes={notesQ.data ?? []}
+          overrideMap={overrideMap}
           leaveRequests={leaveQ.data ?? []}
           onNoteChange={() => qc.invalidateQueries({ queryKey: ['emp-day-notes', id, startDate] })}
           onPunchTimeOverride={() => qc.invalidateQueries({ queryKey: ['emp-att-punches', id, startDate] })}
           onMarkLeave={(date) => setGrantLeaveDate(date)}
           onRemoveLeave={(leaveId) => removeLeaveM.mutate(leaveId)}
+          onStatusOverride={() => qc.invalidateQueries({ queryKey: ['emp-day-notes', id, startDate] })}
         />
       ) : tab === 'calendar' ? (
         <CalendarView days={days} year={year} month={month} holidayNames={holidayNames} leaveNames={leaveNames} />
@@ -591,6 +610,60 @@ function SBox({
       <span className="w-px self-stretch" style={{ background: s.border }} />
       <span className="px-2 py-1.5 flex-1 truncate" style={{ color: s.contentClr }}>{content}</span>
     </Tag>
+  );
+}
+
+/* ── Override Prompt ─────────────────────────────────────────── */
+function OverridePrompt({
+  dateStr, code, onConfirm, onCancel,
+}: {
+  dateStr: string; code: string;
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const LABEL: Record<string, string> = { HD: 'Half Day', A: 'Absent', F: 'Fine', OT: 'Overtime' };
+  const displayDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+
+  async function handleConfirm() {
+    setSaving(true);
+    await onConfirm(reason.trim());
+    setSaving(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(4px)' }}
+      onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5"
+        onClick={e => e.stopPropagation()}>
+        <div className="mb-4">
+          <p className="text-sm font-bold text-slate-800">
+            Override → <span className="text-blue-600">{LABEL[code] ?? code}</span>
+          </p>
+          <p className="text-xs text-slate-400 mt-0.5">{displayDate}</p>
+        </div>
+        <textarea
+          autoFocus
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          placeholder="Reason (optional)"
+          rows={2}
+          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+        />
+        <div className="flex gap-2 mt-3">
+          <button onClick={onCancel}
+            className="flex-1 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 py-2 rounded-xl transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleConfirm} disabled={saving}
+            className="flex-1 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 py-2 rounded-xl transition-colors disabled:opacity-60">
+            {saving ? 'Saving…' : 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -788,31 +861,47 @@ function DayNoteField({ empId, dateStr, initial, onSaved }: {
 }
 
 function DailyView({
-  days, holidayNames, leaveNames, empId, notes, leaveRequests, onNoteChange, onPunchTimeOverride, onMarkLeave, onRemoveLeave,
+  days, holidayNames, leaveNames, empId, notes, overrideMap, leaveRequests,
+  onNoteChange, onPunchTimeOverride, onMarkLeave, onRemoveLeave, onStatusOverride,
 }: {
   days: DayData[];
   holidayNames: Record<string, string>;
   leaveNames: Record<string, string>;
   empId: string;
   notes: DayNote[];
+  overrideMap: Record<string, { status: DayStatus; reason: string }>;
   leaveRequests: LeaveReq[];
   onNoteChange: () => void;
   onPunchTimeOverride: () => void;
   onMarkLeave: (date: string) => void;
   onRemoveLeave: (leaveId: string) => void;
-})
- {
+  onStatusOverride: () => void;
+}) {
   const DOW_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const visible   = [...days].filter(d => d.status !== 'FUT').reverse();
+  const [overrideTarget, setOverrideTarget] = useState<{ dateStr: string; code: DayStatus } | null>(null);
+
   const notesMap  = useMemo(() => {
     const m: Record<string, string> = {};
-    notes.forEach(n => { m[n.date] = n.note; });
+    notes.forEach(n => { if (!n.note.startsWith('__OV:')) m[n.date] = n.note; });
     return m;
   }, [notes]);
 
   async function handleOverride(punchId: string, newTime: string, reason: string) {
     await api.patch(`/admin/punches/${punchId}/override-time`, { newTime, reason: reason || undefined });
     onPunchTimeOverride();
+  }
+
+  async function saveStatusOverride(dateStr: string, code: DayStatus, reason: string) {
+    await api.put(`/admin/employees/${empId}/day-notes/${dateStr}`, {
+      note: `__OV:${code}:${reason}`,
+    });
+    onStatusOverride();
+  }
+
+  async function clearStatusOverride(dateStr: string) {
+    await api.put(`/admin/employees/${empId}/day-notes/${dateStr}`, { note: '' });
+    onStatusOverride();
   }
 
   if (visible.length === 0) {
@@ -869,19 +958,42 @@ function DailyView({
 
               {/* Right section */}
               <div className="flex-1 min-w-0">
-                {/* Status boxes — L box always opens Grant Leave; P/HD/A/F/OT are computed display */}
+                {/* Status boxes */}
                 <div className="grid grid-cols-3 gap-2">
-                  <SBox code="P"  content={pContent}   variant={pVariant} />
-                  <SBox code="HD" content="Half Day"   variant={d.status === 'HD' ? 'teal' : 'ghost'} />
-                  <SBox code="A"  content="Absent"     variant={d.status === 'A'  ? 'red'  : 'ghost'} />
-                  <SBox code="F"  content="Fine"       variant="ghost" />
-                  <SBox code="OT" content="Overtime"   variant="ghost" />
+                  <SBox code="P"  content={pContent} variant={pVariant} />
+                  {(['HD','A','F','OT'] as const).map(code => {
+                    const isActive = d.status === code;
+                    const isOverride = overrideMap[d.dateStr]?.status === code;
+                    const variantMap: Record<string, 'teal'|'red'|'amber'|'ghost'> = { HD:'teal', A:'red', F:'amber', OT:'ghost' };
+                    const labelMap: Record<string, string> = { HD:'Half Day', A:'Absent', F:'Fine', OT:'Overtime' };
+                    const canClick = d.status !== 'H' && d.status !== 'W' && d.status !== 'FUT';
+                    return (
+                      <SBox key={code} code={code} content={labelMap[code]}
+                        variant={isActive ? (variantMap[code] ?? 'ghost') : 'ghost'}
+                        active={isActive || isOverride}
+                        onClick={canClick ? () => setOverrideTarget({ dateStr: d.dateStr, code }) : undefined}
+                      />
+                    );
+                  })}
                   <SBox
                     code={lastCode} content={lastContent} variant={lastVariant}
                     onClick={d.status !== 'H' && d.status !== 'W' && d.status !== 'FUT' ? () => onMarkLeave(d.dateStr) : undefined}
                     active={d.status === 'L' || d.status === 'LP'}
                   />
                 </div>
+                {/* Override badge + clear */}
+                {overrideMap[d.dateStr] && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                      Admin Override: {overrideMap[d.dateStr].status}
+                      {overrideMap[d.dateStr].reason ? ` · ${overrideMap[d.dateStr].reason}` : ''}
+                    </span>
+                    <button onClick={() => clearStatusOverride(d.dateStr)}
+                      className="text-[10px] text-red-500 hover:text-red-700 underline transition-colors">
+                      Clear
+                    </button>
+                  </div>
+                )}
 
                 {/* Punch IN / OUT detail rows */}
                 {(d.punchIn || d.punchOut || d.pendIn || d.pendOut) && (
@@ -943,6 +1055,17 @@ function DailyView({
           </div>
         );
       })}
+      {overrideTarget && (
+        <OverridePrompt
+          dateStr={overrideTarget.dateStr}
+          code={overrideTarget.code}
+          onConfirm={async (reason) => {
+            await saveStatusOverride(overrideTarget.dateStr, overrideTarget.code, reason);
+            setOverrideTarget(null);
+          }}
+          onCancel={() => setOverrideTarget(null)}
+        />
+      )}
     </div>
   );
 }
