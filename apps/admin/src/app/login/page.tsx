@@ -8,8 +8,11 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // Warm up the API server while the user types credentials
-  useEffect(() => { api.get('/health').catch(() => {}); }, []);
+  // Redirect to dashboard if already logged in
+  useEffect(() => {
+    if (localStorage.getItem('admin_token')) router.replace('/dashboard');
+    api.get('/health').catch(() => {}); // warm up API server
+  }, [router]);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

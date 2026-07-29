@@ -1,4 +1,5 @@
 'use client';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -23,10 +24,29 @@ const nav = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router   = useRouter();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      router.replace('/login');
+    } else {
+      setReady(true);
+    }
+  }, [router]);
 
   function logout() {
     localStorage.removeItem('admin_token');
-    router.push('/login');
+    router.replace('/login');
+  }
+
+  // Block ALL rendering until token is confirmed — prevents data flash in incognito
+  if (!ready) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-900">
+        <div className="w-6 h-6 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+      </div>
+    );
   }
 
   return (
