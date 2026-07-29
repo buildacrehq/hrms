@@ -13,7 +13,7 @@ import { localDateStr } from '@/lib/utils';
 /* ── types ────────────────────────────────────────────────────── */
 type Employee = {
   id: string; name: string; phone: string; gender: string;
-  status: string; defaultSite: { id: string; name: string } | null;
+  status: string; weeklyOff: number; defaultSite: { id: string; name: string } | null;
 };
 type LeaveType = { id: string; name: string; scope: string; paid: boolean; accrual: string; };
 type TimeLog = { originalTime: string; newTime: string; reason: string | null; createdAt: string };
@@ -233,7 +233,7 @@ export default function EmployeeAttendancePage() {
       else if (leaveDays.has(dateStr))  status = 'L';
       else if (leavePendingDays.has(dateStr)) status = 'LP';
       else if (overrideMap[dateStr])    status = overrideMap[dateStr].status; // admin override
-      else if (dow === 0)               status = 'W';
+      else if (dow === (employee?.weeklyOff ?? 0)) status = 'W';
       else {
         const dayPunches = punches.filter(p => toLocalDate(p.timestampServer) === dateStr);
         if (dayPunches.length === 0) {
@@ -262,7 +262,7 @@ export default function EmployeeAttendancePage() {
         pending,
       };
     });
-  }, [year, month, lastDay, punches, holidaySet, leaveDays, leavePendingDays, today, overrideMap]);
+  }, [year, month, lastDay, punches, holidaySet, leaveDays, leavePendingDays, today, overrideMap, employee]);
 
   const stats = useMemo(() => {
     let present = 0, absent = 0, weekOff = 0, holidays = 0, leaves = 0,
@@ -455,7 +455,7 @@ export default function EmployeeAttendancePage() {
           onStatusOverride={() => qc.invalidateQueries({ queryKey: ['emp-day-notes', id, startDate] })}
         />
       ) : tab === 'calendar' ? (
-        <CalendarView days={days} year={year} month={month} holidayNames={holidayNames} leaveNames={leaveNames} />
+        <CalendarView days={days} year={year} month={month} holidayNames={holidayNames} leaveNames={leaveNames} weeklyOff={employee?.weeklyOff ?? 0} />
       ) : tab === 'leaves' ? (
         <LeavesTab
           leaves={leaveQ.data ?? []}
@@ -1090,12 +1090,13 @@ function DailyView({
 
 /* ── Calendar View ───────────────────────────────────────────── */
 function CalendarView({
-  days, year, month, holidayNames, leaveNames,
+  days, year, month, holidayNames, leaveNames, weeklyOff,
 }: {
   days: DayData[];
   year: number; month: number;
   holidayNames: Record<string, string>;
   leaveNames: Record<string, string>;
+  weeklyOff: number;
 }) {
   const firstDOW    = new Date(year, month, 1).getDay();
   const DOW_HEADERS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -1111,8 +1112,8 @@ function CalendarView({
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       {/* DOW header row */}
       <div className="grid grid-cols-7 border-b border-slate-200">
-        {DOW_HEADERS.map(d => (
-          <div key={d} className={`text-center text-xs font-bold py-3 uppercase tracking-wide ${d === 'Sun' ? 'text-rose-400' : 'text-slate-500'}`}>
+        {DOW_HEADERS.map((d, i) => (
+          <div key={d} className={`text-center text-xs font-bold py-3 uppercase tracking-wide ${i === weeklyOff ? 'text-rose-400' : 'text-slate-500'}`}>
             {d}
           </div>
         ))}
@@ -1133,7 +1134,7 @@ function CalendarView({
                 style={{ background: d.status !== 'FUT' && d.status !== 'W' ? meta.bg + '60' : undefined }}>
 
                 <div className={`text-sm font-bold mb-1 w-7 h-7 rounded-full flex items-center justify-center
-                  ${isToday ? 'bg-blue-600 text-white' : d.dow === 0 ? 'text-rose-500' : 'text-slate-700'}`}>
+                  ${isToday ? 'bg-blue-600 text-white' : d.dow === weeklyOff ? 'text-rose-500' : 'text-slate-700'}`}>
                   {d.day}
                 </div>
 

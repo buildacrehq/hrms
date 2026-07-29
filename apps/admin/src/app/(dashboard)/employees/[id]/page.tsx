@@ -18,7 +18,7 @@ const EMP_TYPE_LABEL: Record<EmpType, string> = {
 
 type Employee = {
   id: string; name: string; phone: string; gender: string;
-  status: string; employmentType: EmpType;
+  status: string; employmentType: EmpType; weeklyOff: number;
   monthlySalary: string | null;
   joinedAt: string; exitedAt: string | null;
   defaultSite: { id: string; name: string } | null;
@@ -314,6 +314,19 @@ export default function EmployeeDetailPage() {
                 value={emp.monthlySalary ? String(parseFloat(emp.monthlySalary)) : ''}
                 type="number"
                 onSave={v => patch('monthlySalary', v ? parseFloat(v) : null)} />
+              <Field label="Weekly Off Day" icon={Clock4}
+                value={String(emp.weeklyOff ?? 0)}
+                type="select"
+                options={[
+                  { value: '0', label: 'Sunday' },
+                  { value: '1', label: 'Monday' },
+                  { value: '2', label: 'Tuesday' },
+                  { value: '3', label: 'Wednesday' },
+                  { value: '4', label: 'Thursday' },
+                  { value: '5', label: 'Friday' },
+                  { value: '6', label: 'Saturday' },
+                ]}
+                onSave={v => patch('weeklyOff', parseInt(v))} />
               <Field label="Site" icon={MapPin}
                 value={emp.defaultSite?.id ?? ''}
                 type="select"

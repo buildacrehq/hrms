@@ -1,4 +1,4 @@
-import { IsString, IsEnum, Matches, IsOptional, MinLength } from 'class-validator';
+import { IsString, IsEnum, Matches, IsOptional, MinLength, IsInt, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Gender, Role, EmpType } from '@prisma/client';
 
@@ -30,6 +30,13 @@ export class CreateEmployeeDto {
   @IsEnum(EmpType)
   @IsOptional()
   employmentType?: EmpType;
+
+  @ApiPropertyOptional({ description: 'Weekly off day: 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat', minimum: 0, maximum: 6 })
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  @IsOptional()
+  weeklyOff?: number;
 
   @ApiPropertyOptional({ description: 'Initial password (min 6 chars). Admin can set/reset later.', minLength: 6 })
   @IsString()

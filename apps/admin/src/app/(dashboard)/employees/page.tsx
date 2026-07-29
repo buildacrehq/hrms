@@ -16,7 +16,7 @@ const EMP_TYPE_LABEL: Record<EmpType, string> = {
 
 type Employee = {
   id: string; name: string; phone: string; gender: string;
-  status: string; defaultSite: { id: string; name: string } | null;
+  status: string; weeklyOff: number; defaultSite: { id: string; name: string } | null;
   monthlySalary: string | null; employmentType: EmpType;
 };
 type Site = { id: string; name: string };
@@ -235,6 +235,7 @@ function EditModal({ employee, sites, onClose }: { employee: Employee; sites: Si
     defaultSiteId: employee.defaultSite?.id ?? '',
     monthlySalary: employee.monthlySalary ?? '',
     employmentType: employee.employmentType,
+    weeklyOff: employee.weeklyOff ?? 0,
   });
   const [error, setError] = useState('');
 
@@ -246,6 +247,7 @@ function EditModal({ employee, sites, onClose }: { employee: Employee; sites: Si
       defaultSiteId: form.defaultSiteId || undefined,
       monthlySalary: form.monthlySalary ? parseFloat(form.monthlySalary) : undefined,
       employmentType: form.employmentType,
+      weeklyOff: form.weeklyOff,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); onClose(); },
     onError: (e: any) => setError(e?.response?.data?.message ?? 'Error updating employee'),
@@ -294,7 +296,16 @@ function EditModal({ employee, sites, onClose }: { employee: Employee; sites: Si
               ))}
             </select>
           </div>
-          <div className="col-span-2">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Weekly Off Day</label>
+            <select value={form.weeklyOff} onChange={e => setForm(f => ({ ...f, weeklyOff: parseInt(e.target.value) }))}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d, i) => (
+                <option key={i} value={i}>{d}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Monthly Salary (₹) <span className="font-normal text-slate-400">optional</span></label>
             <input type="number" min="0" step="100" value={form.monthlySalary}
               onChange={e => setForm(f => ({ ...f, monthlySalary: e.target.value }))}
@@ -353,7 +364,7 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '', employmentType: 'MONTHLY_REGULAR' as EmpType });
+  const [form, setForm] = useState({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '', employmentType: 'MONTHLY_REGULAR' as EmpType, weeklyOff: 0 });
   const [passwordTarget, setPasswordTarget] = useState<Employee | null>(null);
   const [editTarget,     setEditTarget]     = useState<Employee | null>(null);
   const [historyTarget,  setHistoryTarget]  = useState<Employee | null>(null);
@@ -367,7 +378,7 @@ export default function EmployeesPage() {
 
   const create = useMutation({
     mutationFn: () => api.post('/admin/employees', { ...form, password: form.password || undefined }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); setShowForm(false); setForm({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '', employmentType: 'MONTHLY_REGULAR' }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); setShowForm(false); setForm({ name: '', phone: '', gender: 'MALE', defaultSiteId: '', password: '', employmentType: 'MONTHLY_REGULAR', weeklyOff: 0 }); },
   });
 
   const deactivate = useMutation({
@@ -448,6 +459,15 @@ export default function EmployeesPage() {
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
                   {(Object.entries(EMP_TYPE_LABEL) as [EmpType, string][]).map(([val, label]) => (
                     <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Weekly Off Day</label>
+                <select value={form.weeklyOff} onChange={e => setForm(f => ({ ...f, weeklyOff: parseInt(e.target.value) }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d, i) => (
+                    <option key={i} value={i}>{d}</option>
                   ))}
                 </select>
               </div>
