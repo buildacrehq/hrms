@@ -623,7 +623,7 @@ function OverridePrompt({
 }) {
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
-  const LABEL: Record<string, string> = { HD: 'Half Day', A: 'Absent', F: 'Fine', OT: 'Overtime' };
+  const LABEL: Record<string, string> = { P: 'Present', HD: 'Half Day', A: 'Absent', F: 'Fine', OT: 'Overtime' };
   const displayDate = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 
   async function handleConfirm() {
@@ -960,7 +960,23 @@ function DailyView({
               <div className="flex-1 min-w-0">
                 {/* Status boxes */}
                 <div className="grid grid-cols-3 gap-2">
-                  <SBox code="P"  content={pContent} variant={pVariant} />
+                  {(() => {
+                    const canClick = d.status !== 'H' && d.status !== 'W' && d.status !== 'FUT';
+                    const ov = overrideMap[d.dateStr];
+                    return (
+                      <SBox code="P" content={pContent} variant={pVariant}
+                        active={ov?.status === 'P'}
+                        onClick={canClick ? () => {
+                          // If there's a non-P override active, clicking P clears it (restores natural state)
+                          if (ov && ov.status !== 'P') {
+                            clearStatusOverride(d.dateStr);
+                          } else {
+                            setOverrideTarget({ dateStr: d.dateStr, code: 'P' });
+                          }
+                        } : undefined}
+                      />
+                    );
+                  })()}
                   {(['HD','A','F','OT'] as const).map(code => {
                     const isActive = d.status === code;
                     const isOverride = overrideMap[d.dateStr]?.status === code;
