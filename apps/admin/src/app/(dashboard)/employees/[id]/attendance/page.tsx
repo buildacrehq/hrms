@@ -143,6 +143,11 @@ export default function EmployeeAttendancePage() {
     queryKey: ['leave-types'],
     queryFn:  () => api.get('/admin/leaves/types').then(r => r.data.data ?? r.data),
   });
+  const balanceQ = useQuery<{ leaveType: { name: string }; credited: number; used: number }[]>({
+    queryKey: ['emp-leave-balances', id, year],
+    queryFn:  () => api.get('/admin/leaves/balances', { params: { employeeId: id, year } })
+      .then(r => r.data.data ?? r.data).catch(() => []),
+  });
   const qc = useQueryClient();
 
   // grant-leave modal state: null = closed, string = pre-filled date, '' = no pre-fill
@@ -364,6 +369,35 @@ export default function EmployeeAttendancePage() {
           </div>
         ))}
       </div>
+
+      {/* ── Leave Balances ── */}
+      {(balanceQ.data ?? []).length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 mb-5 shadow-sm">
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Leave Balances · {year}</div>
+          <div className="flex flex-wrap gap-3">
+            {(balanceQ.data ?? []).map(b => {
+              const available = Math.max(0, b.credited - b.used);
+              const pct = b.credited > 0 ? Math.min(100, (b.used / b.credited) * 100) : 0;
+              const low = available <= 1;
+              return (
+                <div key={b.leaveType.name} className="flex flex-col gap-1.5 min-w-27.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-700 truncate">{b.leaveType.name}</span>
+                    <span className={`text-xs font-bold tabular-nums ${low ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {available}<span className="text-slate-400 font-normal">/{b.credited}</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden w-full">
+                    <div className="h-full rounded-full transition-all"
+                      style={{ width: `${pct}%`, background: low ? '#ef4444' : '#10b981' }} />
+                  </div>
+                  <div className="text-[10px] text-slate-400">{b.used} used · {available} left</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Pending alert */}
       {stats.pendingCount > 0 && (
