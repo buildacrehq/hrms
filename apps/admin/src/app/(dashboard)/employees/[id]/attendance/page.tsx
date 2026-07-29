@@ -929,16 +929,18 @@ function DailyView({
 
         const displayDate = new Date(d.dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 
+        // P box always reflects actual punch data — override never hides punch times/photos
         let pVariant: 'green' | 'green-outline' | 'amber' | 'ghost' = 'ghost';
         let pContent = '—';
-        if (d.status === 'P') {
-          pVariant = 'green'; pContent = `${inTime} – ${outTime ?? 'NA'}`;
-        } else if (d.status === 'HD' && inTime) {
-          pVariant = 'green-outline'; pContent = `${inTime} – NA`;
-        } else if (d.status === 'PEND' && pendInTime) {
-          pVariant = 'amber'; pContent = `${pendInTime} – ${pendOutTime ?? 'NA'}`;
+        if (inTime && outTime) {
+          pVariant = 'green'; pContent = `${inTime} – ${outTime}`;
         } else if (inTime) {
           pVariant = 'green-outline'; pContent = `${inTime} – NA`;
+        } else if (outTime) {
+          pVariant = 'green-outline'; pContent = `NA – ${outTime}`;
+        } else if (pendInTime || pendOutTime) {
+          pVariant = 'amber';
+          pContent = pendInTime ? `${pendInTime} – ${pendOutTime ?? 'NA'}` : `NA – ${pendOutTime}`;
         }
 
         let lastCode = 'L'; let lastContent = 'Leave'; let lastVariant: 'amber' | 'violet' | 'slate' | 'ghost' = 'ghost';
