@@ -235,11 +235,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 _SectionCard(children: [
                   _InfoTile(icon: Icons.phone_outlined, label: 'Phone', value: '+91 $phone'),
                   if (gender != null && gender.isNotEmpty)
-                    _InfoTile(icon: Icons.person_outline, label: 'Gender', value: _fmtGender(gender)),
+                    _InfoTile(icon: Icons.person_outline, label: 'Gender', value: _fmtGender(gender), isLast: dob == null || dob.isEmpty),
                   if (dob != null && dob.isNotEmpty)
                     _InfoTile(icon: Icons.cake_outlined, label: 'Date of Birth', value: _fmtDate(dob), isLast: true),
-                  if (dob == null || dob.isEmpty)
-                    _InfoTile(icon: Icons.cake_outlined, label: 'Date of Birth', value: '—', isLast: true),
                 ]),
                 const SizedBox(height: 16),
 
