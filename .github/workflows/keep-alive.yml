@@ -1,0 +1,15 @@
+name: Keep API Alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping API
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://hrms-nydc.onrender.com/api/v1/health)
+          echo "Health check status: $STATUS"
