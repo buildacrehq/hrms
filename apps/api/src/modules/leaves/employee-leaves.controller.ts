@@ -23,7 +23,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 @ApiTags('Leaves (Employee)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('EMPLOYEE', 'SITE_MANAGER')
+@Roles('EMPLOYEE', 'TEAM_LEADER')
 @Controller('leaves')
 export class EmployeeLeavesController {
   constructor(
@@ -67,14 +67,14 @@ export class EmployeeLeavesController {
   // ── Site Manager approval ────────────────────────────────────────────────────
 
   @Get('team-requests')
-  @Roles('SITE_MANAGER')
+  @Roles('TEAM_LEADER')
   @ApiOperation({ summary: 'Site manager: pending leave requests from own site' })
   getTeamRequests(@CurrentUser() user: JwtPayload) {
     return this.service.getTeamRequests(user.sub);
   }
 
   @Post('team-requests/:id/approve')
-  @Roles('SITE_MANAGER')
+  @Roles('TEAM_LEADER')
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Site manager: approve a leave request from own site' })
   approveTeamRequest(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
@@ -82,7 +82,7 @@ export class EmployeeLeavesController {
   }
 
   @Post('team-requests/:id/reject')
-  @Roles('SITE_MANAGER')
+  @Roles('TEAM_LEADER')
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Site manager: reject a leave request from own site' })
   rejectTeamRequest(

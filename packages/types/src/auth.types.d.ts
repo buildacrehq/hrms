@@ -15,7 +15,7 @@ export interface AdminAuthResponse extends AuthTokens {
 }
 export interface JwtPayload {
     sub: string;
-    role: 'EMPLOYEE' | 'SITE_MANAGER' | 'ADMIN';
+    role: 'EMPLOYEE' | 'TEAM_LEADER' | 'ADMIN';
     iat?: number;
     exp?: number;
 }

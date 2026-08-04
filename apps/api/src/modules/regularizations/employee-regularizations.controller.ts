@@ -11,7 +11,7 @@ import { JwtPayload } from '../../common/types/jwt.types';
 @ApiTags('Regularizations (Employee)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('EMPLOYEE', 'SITE_MANAGER')
+@Roles('EMPLOYEE', 'TEAM_LEADER')
 @Controller('regularizations')
 export class EmployeeRegularizationsController {
   constructor(private readonly service: RegularizationsService) {}

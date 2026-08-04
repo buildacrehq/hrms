@@ -35,7 +35,7 @@ import { JwtPayload } from '../../../common/types/jwt.types';
 @ApiTags('Punches (Employee)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('EMPLOYEE', 'SITE_MANAGER')
+@Roles('EMPLOYEE', 'TEAM_LEADER')
 @Controller('punches')
 export class PunchesController {
   constructor(

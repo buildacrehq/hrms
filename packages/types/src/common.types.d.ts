@@ -9,7 +9,7 @@ export interface PaginatedResponse<T> {
     total?: number;
 }
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
-export type Role = 'EMPLOYEE' | 'SITE_MANAGER' | 'ADMIN';
+export type Role = 'EMPLOYEE' | 'TEAM_LEADER' | 'ADMIN';
 export type EmpStatus = 'ACTIVE' | 'DEACTIVATED';
 export type SiteStatus = 'ACTIVE' | 'INACTIVE';
 export type PunchType = 'IN' | 'OUT';

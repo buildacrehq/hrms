@@ -224,7 +224,7 @@ export default function ProfilePage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', background: '#fff', borderBottom: '1px solid #e5e7eb' }}>
         {[
           { label: 'Tenure',  value: tenure >= 12 ? `${Math.floor(tenure/12)}y ${tenure%12}m` : `${tenure}m` },
-          { label: 'Role',    value: employee.role === 'SITE_MANAGER' ? 'Manager' : 'Employee' },
+          { label: 'Role',    value: employee.role === 'TEAM_LEADER' ? 'Team Leader' : 'Employee' },
           { label: 'Status',  value: employee.status === 'ACTIVE' ? 'Active' : 'Inactive' },
         ].map(s => (
           <div key={s.label} style={{ padding: '12px 8px', textAlign: 'center', borderRight: '1px solid #f3f4f6' }}>

@@ -34,7 +34,7 @@ class _LeavesScreenState extends ConsumerState<LeavesScreen> {
   }
 
   bool get _isSiteManager =>
-      ref.read(authNotifierProvider).employee?['role'] == 'SITE_MANAGER';
+      ref.read(authNotifierProvider).employee?['role'] == 'TEAM_LEADER';
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
@@ -252,7 +252,7 @@ class _LeavesScreenState extends ConsumerState<LeavesScreen> {
                         childCount: _requests.length,
                       )),
 
-                    // ── Team Approvals (SITE_MANAGER only) ───────────────────
+                    // ── Team Approvals (TEAM_LEADER only) ───────────────────
                     if (_isSiteManager) ...[
                       SliverToBoxAdapter(child: Padding(
                         padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),

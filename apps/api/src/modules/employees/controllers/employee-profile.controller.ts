@@ -18,7 +18,7 @@ class UpdateMyProfileDto {
 @ApiTags('Employees (Employee)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('EMPLOYEE', 'SITE_MANAGER')
+@Roles('EMPLOYEE', 'TEAM_LEADER')
 @Controller('employees')
 export class EmployeeProfileController {
   constructor(private readonly service: EmployeesService) {}

@@ -35,7 +35,7 @@ export class EmployeeAuthController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('EMPLOYEE', 'SITE_MANAGER')
+  @Roles('EMPLOYEE', 'TEAM_LEADER')
   @ApiOperation({ summary: 'Change own password' })
   changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: JwtPayload) {
     return this.service.changePassword(user.sub, dto.oldPassword, dto.newPassword);
