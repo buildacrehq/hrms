@@ -211,10 +211,13 @@ function CompOffModal({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+type PunchFilter = 'all' | 'in' | 'not-in';
+
 export default function AttendancePage() {
   const todayIso = localDateStr();
   const [date, setDate] = useState(todayIso);
   const [search, setSearch] = useState('');
+  const [punchFilter, setPunchFilter] = useState<PunchFilter>('all');
   const [markLeaveEmp, setMarkLeaveEmp]   = useState<Employee | null>(null);
   const [compOffEmp,   setCompOffEmp]     = useState<Employee | null>(null);
   const qc = useQueryClient();
@@ -222,6 +225,7 @@ export default function AttendancePage() {
   function shiftDate(days: number) {
     const d = new Date(date); d.setDate(d.getDate() + days);
     setDate(localDateStr(d));
+    setPunchFilter('all');
   }
   const isToday = date === todayIso;
 
@@ -326,12 +330,22 @@ export default function AttendancePage() {
 
   /* ── filtered list ── */
   const filtered = useMemo(() => {
+    let list = activeEmployees;
+    if (punchFilter === 'in') {
+      list = list.filter(e => {
+        const s = getStatus(e);
+        return s === 'P' || s === 'HD' || s === 'PEND';
+      });
+    } else if (punchFilter === 'not-in') {
+      list = list.filter(e => {
+        const s = getStatus(e);
+        return s === 'A';
+      });
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return activeEmployees;
-    return activeEmployees.filter(e =>
-      e.name.toLowerCase().includes(q) || e.phone.includes(q)
-    );
-  }, [activeEmployees, search]);
+    if (!q) return list;
+    return list.filter(e => e.name.toLowerCase().includes(q) || e.phone.includes(q));
+  }, [activeEmployees, search, punchFilter, punchMap, leaveMap, isHoliday, dayOfWeek]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const displayDate = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -362,7 +376,7 @@ export default function AttendancePage() {
               className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors">
               <ChevronLeft size={16} />
             </button>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            <input type="date" value={date} onChange={e => { setDate(e.target.value); setPunchFilter('all'); }}
               max={todayIso}
               className="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button onClick={() => shiftDate(1)} disabled={isToday}
@@ -380,17 +394,41 @@ export default function AttendancePage() {
       </div>
 
       <div className="px-8 py-6 space-y-5">
-        {/* ── Summary stats strip ── */}
-        <div className="grid grid-cols-4 lg:grid-cols-8 gap-3">
+        {/* ── Punch-in / Not-punched filter cards ── */}
+        <div className="grid grid-cols-3 gap-4">
+          {/* All */}
+          <button
+            onClick={() => setPunchFilter('all')}
+            className={`rounded-2xl p-4 text-center transition-all border-2 ${punchFilter === 'all' ? 'border-blue-500 shadow-md' : 'border-transparent hover:border-slate-300'}`}
+            style={{ background: '#eff6ff' }}>
+            <div className="text-3xl font-extrabold text-blue-700">{activeEmployees.length}</div>
+            <div className="text-xs font-bold mt-1 uppercase tracking-wide text-blue-500">Total Staff</div>
+          </button>
+          {/* Punched In */}
+          <button
+            onClick={() => setPunchFilter(punchFilter === 'in' ? 'all' : 'in')}
+            className={`rounded-2xl p-4 text-center transition-all border-2 ${punchFilter === 'in' ? 'border-emerald-500 shadow-md' : 'border-transparent hover:border-slate-300'}`}
+            style={{ background: '#f0fdf4' }}>
+            <div className="text-3xl font-extrabold text-emerald-700">{stats.punchedIn}</div>
+            <div className="text-xs font-bold mt-1 uppercase tracking-wide text-emerald-500">Punched In</div>
+          </button>
+          {/* Not Punched In */}
+          <button
+            onClick={() => setPunchFilter(punchFilter === 'not-in' ? 'all' : 'not-in')}
+            className={`rounded-2xl p-4 text-center transition-all border-2 ${punchFilter === 'not-in' ? 'border-red-500 shadow-md' : 'border-transparent hover:border-slate-300'}`}
+            style={{ background: '#fee2e2' }}>
+            <div className="text-3xl font-extrabold text-red-700">{stats.absent}</div>
+            <div className="text-xs font-bold mt-1 uppercase tracking-wide text-red-500">Not Punched In</div>
+          </button>
+        </div>
+
+        {/* ── Secondary stats strip ── */}
+        <div className="grid grid-cols-4 gap-3">
           {[
-            { label: 'Total Staff',  value: activeEmployees.length, clr: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe' },
-            { label: 'Present',      value: stats.present,          clr: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
-            { label: 'Absent',       value: stats.absent,           clr: '#b91c1c', bg: '#fee2e2', border: '#fecaca' },
-            { label: 'Half Day',     value: stats.halfDay,          clr: '#0f766e', bg: '#ccfbf1', border: '#99f6e4' },
-            { label: 'Pending',      value: stats.pending,          clr: '#92400e', bg: '#fef9c3', border: '#fde68a' },
-            { label: 'On Leave',     value: stats.onLeave,          clr: '#6d28d9', bg: '#ede9fe', border: '#ddd6fe' },
-            { label: 'Punched In',   value: stats.punchedIn,        clr: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe' },
-            { label: 'Punched Out',  value: stats.punchedOut,       clr: '#c2410c', bg: '#fff7ed', border: '#fed7aa' },
+            { label: 'Present',     value: stats.present,  clr: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+            { label: 'Half Day',    value: stats.halfDay,  clr: '#0f766e', bg: '#ccfbf1', border: '#99f6e4' },
+            { label: 'Pending',     value: stats.pending,  clr: '#92400e', bg: '#fef9c3', border: '#fde68a' },
+            { label: 'On Leave',    value: stats.onLeave,  clr: '#6d28d9', bg: '#ede9fe', border: '#ddd6fe' },
           ].map(s => (
             <div key={s.label} className="rounded-2xl p-3 text-center"
               style={{ background: s.bg, border: `1px solid ${s.border}` }}>
@@ -432,6 +470,18 @@ export default function AttendancePage() {
             className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
           />
         </div>
+
+        {/* Active filter label */}
+        {punchFilter !== 'all' && (
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-semibold px-3 py-1.5 rounded-full ${punchFilter === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+              {punchFilter === 'in' ? `Showing ${filtered.length} Punched In` : `Showing ${filtered.length} Not Punched In`}
+            </span>
+            <button onClick={() => setPunchFilter('all')} className="text-xs text-slate-400 hover:text-slate-600">
+              Clear filter ×
+            </button>
+          </div>
+        )}
 
         {/* ── Employee list ── */}
         {isLoading ? (
