@@ -863,10 +863,15 @@ class _CalendarView extends StatelessWidget {
             final isToday = dateStr == todayStr;
 
             _CellStatus status;
-            if (isFut)                        status = _CellStatus.future;
-            else if (holidaySet.contains(dateStr)) status = _CellStatus.holiday;
-            else if (leaveDaySet.contains(dateStr)) status = _CellStatus.leave;
-            else if (isSun)                   status = _CellStatus.sunday;
+            if (isFut) {
+              status = _CellStatus.future;
+            } else if (holidaySet.contains(dateStr)) {
+              status = _CellStatus.holiday;
+            } else if (leaveDaySet.contains(dateStr)) {
+              status = _CellStatus.leave;
+            } else if (isSun) {
+              status = _CellStatus.sunday;
+            }
             else {
               final dp = grouped[dateStr] ?? [];
               if (dp.isEmpty) {

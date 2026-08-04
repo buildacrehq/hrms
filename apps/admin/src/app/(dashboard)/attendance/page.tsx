@@ -384,7 +384,7 @@ export default function AttendancePage() {
               <ChevronRight size={16} />
             </button>
             {!isToday && (
-              <button onClick={() => setDate(todayIso)}
+              <button onClick={() => { setDate(todayIso); setPunchFilter('all'); }}
                 className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-xl transition-colors">
                 Today
               </button>

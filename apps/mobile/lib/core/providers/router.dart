@@ -33,23 +33,23 @@ GoRouter router(Ref ref) {
       return null;
     },
     routes: [
-      GoRoute(path: '/splash', builder: (_, __) => const _SplashScreen()),
-      GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/', redirect: (_, __) => '/splash'),
+      GoRoute(path: '/splash', builder: (_, _) => const _SplashScreen()),
+      GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(path: '/', redirect: (_, _) => '/splash'),
       StatefulShellRoute.indexedStack(
         builder: (ctx, state, shell) => MainScaffold(navigationShell: shell),
         branches: [
           StatefulShellBranch(routes: [
-            GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+            GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/history', builder: (_, __) => const HistoryScreen()),
+            GoRoute(path: '/history', builder: (_, _) => const HistoryScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/leaves', builder: (_, __) => const LeavesScreen()),
+            GoRoute(path: '/leaves', builder: (_, _) => const LeavesScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+            GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen()),
           ]),
         ],
       ),
@@ -59,7 +59,7 @@ GoRouter router(Ref ref) {
 
 class _AuthListenable extends ChangeNotifier {
   _AuthListenable(Ref ref) {
-    ref.listen(authNotifierProvider, (_, __) => notifyListeners());
+    ref.listen(authNotifierProvider, (_, _) => notifyListeners());
   }
 }
 

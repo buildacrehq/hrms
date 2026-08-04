@@ -194,6 +194,9 @@ export class LeavesService {
       where: { id: req.employeeId },
       select: { defaultSiteId: true },
     });
+    if (req.employeeId === managerId) {
+      throw new ForbiddenException('You cannot approve or reject your own leave request');
+    }
     if (!manager?.defaultSiteId || manager.defaultSiteId !== emp?.defaultSiteId) {
       throw new ForbiddenException('You can only manage leaves for employees at your site');
     }

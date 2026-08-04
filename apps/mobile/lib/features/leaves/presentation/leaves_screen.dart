@@ -87,13 +87,17 @@ class _LeavesScreenState extends ConsumerState<LeavesScreen> {
     try {
       await ref.read(leavesRepositoryProvider).approveTeamLeave(id);
       await _load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Leave approved'), backgroundColor: Color(0xFF15803d)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Leave approved'), backgroundColor: Color(0xFF15803d)),
+        );
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -121,13 +125,17 @@ class _LeavesScreenState extends ConsumerState<LeavesScreen> {
     try {
       await ref.read(leavesRepositoryProvider).rejectTeamLeave(id, reason);
       await _load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Leave rejected'), backgroundColor: Color(0xFFb91c1c)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Leave rejected'), backgroundColor: Color(0xFFb91c1c)),
+        );
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -204,7 +212,7 @@ class _LeavesScreenState extends ConsumerState<LeavesScreen> {
                             child: ListView.separated(
                               scrollDirection: Axis.horizontal,
                               itemCount: _balances.length,
-                              separatorBuilder: (_, __) => const SizedBox(width: 10),
+                              separatorBuilder: (_, _) => const SizedBox(width: 10),
                               itemBuilder: (_, i) => _BalanceChip(balance: _balances[i]),
                             ),
                           ),
@@ -717,7 +725,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
         const SizedBox(height: 16),
 
         DropdownButtonFormField<String>(
-          value: _selectedTypeId,
+          initialValue: _selectedTypeId,
           decoration: const InputDecoration(labelText: 'Leave Type', prefixIcon: Icon(Icons.eco_outlined)),
           items: widget.types.map((t) {
             final bal = widget.balances.firstWhere(
