@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Delete,
+  Patch,
   Param,
   Body,
   UseGuards,
@@ -61,5 +62,34 @@ export class EmployeeLeavesController {
   @ApiOperation({ summary: 'Cancel a pending leave request' })
   cancelRequest(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.service.cancelRequest(id, user.sub);
+  }
+
+  // ── Site Manager approval ────────────────────────────────────────────────────
+
+  @Get('team-requests')
+  @Roles('SITE_MANAGER')
+  @ApiOperation({ summary: 'Site manager: pending leave requests from own site' })
+  getTeamRequests(@CurrentUser() user: JwtPayload) {
+    return this.service.getTeamRequests(user.sub);
+  }
+
+  @Post('team-requests/:id/approve')
+  @Roles('SITE_MANAGER')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Site manager: approve a leave request from own site' })
+  approveTeamRequest(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.approveRequestAsSiteManager(id, user.sub);
+  }
+
+  @Post('team-requests/:id/reject')
+  @Roles('SITE_MANAGER')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Site manager: reject a leave request from own site' })
+  rejectTeamRequest(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.rejectRequestAsSiteManager(id, user.sub, body.reason ?? '');
   }
 }

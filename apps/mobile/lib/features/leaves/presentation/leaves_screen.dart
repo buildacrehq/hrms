@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../data/leaves_repository.dart';
+import '../../auth/domain/auth_notifier.dart';
 
 const _kGradient = LinearGradient(
   begin: Alignment.topLeft,
@@ -19,9 +20,10 @@ class LeavesScreen extends ConsumerStatefulWidget {
 }
 
 class _LeavesScreenState extends ConsumerState<LeavesScreen> {
-  List<Map<String, dynamic>> _types    = [];
-  List<Map<String, dynamic>> _requests = [];
-  List<Map<String, dynamic>> _balances = [];
+  List<Map<String, dynamic>> _types        = [];
+  List<Map<String, dynamic>> _requests     = [];
+  List<Map<String, dynamic>> _balances     = [];
+  List<Map<String, dynamic>> _teamRequests = [];
   bool _loading = true;
   String? _error;
 
@@ -31,17 +33,23 @@ class _LeavesScreenState extends ConsumerState<LeavesScreen> {
     _load();
   }
 
+  bool get _isSiteManager =>
+      ref.read(authNotifierProvider).employee?['role'] == 'SITE_MANAGER';
+
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
       final repo    = ref.read(leavesRepositoryProvider);
-      final results = await Future.wait([repo.getLeaveTypes(), repo.getMyRequests(), repo.getMyBalance()]);
+      final futures = [repo.getLeaveTypes(), repo.getMyRequests(), repo.getMyBalance()];
+      if (_isSiteManager) futures.add(repo.getTeamRequests());
+      final results = await Future.wait(futures);
       if (!mounted) return;
       setState(() {
-        _types    = results[0];
-        _requests = results[1];
-        _balances = results[2];
-        _loading  = false;
+        _types        = results[0];
+        _requests     = results[1];
+        _balances     = results[2];
+        _teamRequests = results.length > 3 ? results[3] : [];
+        _loading      = false;
       });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
@@ -68,10 +76,59 @@ class _LeavesScreenState extends ConsumerState<LeavesScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => _ApplyLeaveSheet(
         types: _types,
+        balances: _balances,
         repo: ref.read(leavesRepositoryProvider),
         onApplied: _load,
       ),
     );
+  }
+
+  Future<void> _approveTeam(String id) async {
+    try {
+      await ref.read(leavesRepositoryProvider).approveTeamLeave(id);
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Leave approved'), backgroundColor: Color(0xFF15803d)),
+      );
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _rejectTeam(String id) async {
+    final ctrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reject Leave'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(labelText: 'Reason'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: Text('Reject', style: TextStyle(color: Colors.red.shade600)),
+          ),
+        ],
+      ),
+    );
+    if (reason == null) return;
+    try {
+      await ref.read(leavesRepositoryProvider).rejectTeamLeave(id, reason);
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Leave rejected'), backgroundColor: Color(0xFFb91c1c)),
+      );
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   @override
@@ -186,7 +243,7 @@ class _LeavesScreenState extends ConsumerState<LeavesScreen> {
                     else
                       SliverList(delegate: SliverChildBuilderDelegate(
                         (_, i) {
-                          final isLast = i == _requests.length - 1;
+                          final isLast = i == _requests.length - 1 && !_isSiteManager;
                           return Padding(
                             padding: EdgeInsets.fromLTRB(16, 0, 16, isLast ? 80 : 10),
                             child: _RequestCard(request: _requests[i], onCancel: _cancelLeave),
@@ -194,6 +251,57 @@ class _LeavesScreenState extends ConsumerState<LeavesScreen> {
                         },
                         childCount: _requests.length,
                       )),
+
+                    // ── Team Approvals (SITE_MANAGER only) ───────────────────
+                    if (_isSiteManager) ...[
+                      SliverToBoxAdapter(child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 28, 16, 0),
+                        child: Row(children: [
+                          Text('Team Approvals',
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: cs.onSurface)),
+                          const SizedBox(width: 8),
+                          if (_teamRequests.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFfef9c3),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text('${_teamRequests.length} pending',
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF92400e))),
+                            ),
+                        ]),
+                      )),
+                      const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                      if (_teamRequests.isEmpty)
+                        SliverToBoxAdapter(child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Center(child: Text('No pending requests from your team',
+                              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13))),
+                          ),
+                        ))
+                      else
+                        SliverList(delegate: SliverChildBuilderDelegate(
+                          (_, i) {
+                            final isLast = i == _teamRequests.length - 1;
+                            return Padding(
+                              padding: EdgeInsets.fromLTRB(16, 0, 16, isLast ? 80 : 10),
+                              child: _TeamRequestCard(
+                                request: _teamRequests[i],
+                                onApprove: _approveTeam,
+                                onReject: _rejectTeam,
+                              ),
+                            );
+                          },
+                          childCount: _teamRequests.length,
+                        )),
+                    ],
                   ]),
                 ),
       ),
@@ -397,11 +505,135 @@ class _RequestCard extends StatelessWidget {
   }
 }
 
+// ── Team Request Card ─────────────────────────────────────────────────────────
+
+class _TeamRequestCard extends StatelessWidget {
+  const _TeamRequestCard({required this.request, required this.onApprove, required this.onReject});
+  final Map<String, dynamic> request;
+  final void Function(String id) onApprove;
+  final void Function(String id) onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs       = Theme.of(context).colorScheme;
+    final id       = request['id'] as String? ?? '';
+    final emp      = request['employee'] as Map<String, dynamic>? ?? {};
+    final empName  = emp['name'] as String? ?? 'Employee';
+    final type     = request['leaveType'] as Map<String, dynamic>? ?? {};
+    final typeName = type['name'] as String? ?? 'Leave';
+    final from     = (request['fromDate'] ?? '') as String;
+    final to       = (request['toDate']   ?? '') as String;
+    final reason   = request['reason']    as String? ?? '';
+
+    String fmtDate(String d) {
+      try { return DateFormat('dd MMM yy').format(DateTime.parse(d.substring(0, 10))); }
+      catch (_) { return d.length >= 10 ? d.substring(0, 10) : d; }
+    }
+
+    int diffDays() {
+      try {
+        final a = DateTime.parse(from.substring(0, 10));
+        final b = DateTime.parse(to.substring(0, 10));
+        return b.difference(a).inDays + 1;
+      } catch (_) { return 1; }
+    }
+
+    final days = (from.isNotEmpty && to.isNotEmpty) ? diffDays() : 0;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+          ),
+          child: Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(empName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              Text(typeName, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            ])),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              decoration: BoxDecoration(color: const Color(0xFFfef9c3), borderRadius: BorderRadius.circular(20)),
+              child: const Text('Pending', style: TextStyle(color: Color(0xFFb45309), fontSize: 11, fontWeight: FontWeight.w700)),
+            ),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.date_range_outlined, size: 14, color: cs.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text(
+                from.isNotEmpty
+                  ? (from.substring(0,10) == to.substring(0,10)
+                      ? fmtDate(from)
+                      : '${fmtDate(from)}  →  ${fmtDate(to)}')
+                  : '—',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              if (days > 0) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(color: cs.secondaryContainer, borderRadius: BorderRadius.circular(8)),
+                  child: Text('$days day${days != 1 ? 's' : ''}',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cs.onSecondaryContainer)),
+                ),
+              ],
+            ]),
+            if (reason.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('"$reason"',
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant, fontStyle: FontStyle.italic),
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+            ],
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => onApprove(id),
+                  icon: const Icon(Icons.check, size: 16),
+                  label: const Text('Approve'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF15803d),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => onReject(id),
+                  icon: Icon(Icons.close, size: 16, color: Colors.red.shade600),
+                  label: Text('Reject', style: TextStyle(color: Colors.red.shade600)),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.red.shade300),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
 // ── Apply leave bottom sheet ──────────────────────────────────────────────────
 
 class _ApplyLeaveSheet extends StatefulWidget {
-  const _ApplyLeaveSheet({required this.types, required this.repo, required this.onApplied});
+  const _ApplyLeaveSheet({required this.types, required this.balances, required this.repo, required this.onApplied});
   final List<Map<String, dynamic>> types;
+  final List<Map<String, dynamic>> balances;
   final LeavesRepository repo;
   final VoidCallback onApplied;
 
@@ -487,12 +719,49 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
         DropdownButtonFormField<String>(
           value: _selectedTypeId,
           decoration: const InputDecoration(labelText: 'Leave Type', prefixIcon: Icon(Icons.eco_outlined)),
-          items: widget.types.map((t) => DropdownMenuItem<String>(
-            value: t['id'] as String?,
-            child: Text(t['name'] as String? ?? ''),
-          )).toList(),
+          items: widget.types.map((t) {
+            final bal = widget.balances.firstWhere(
+              (b) => (b['leaveType']?['id'] ?? b['leaveTypeId']) == t['id'],
+              orElse: () => {},
+            );
+            final remaining = (bal['remainingDays'] as num?)?.toInt();
+            final isManual  = (t['accrual'] as String?) == 'MANUAL';
+            final suffix    = isManual ? '' : (remaining != null ? '  ($remaining left)' : '');
+            return DropdownMenuItem<String>(
+              value: t['id'] as String?,
+              child: Text('${t['name'] as String? ?? ''}$suffix'),
+            );
+          }).toList(),
           onChanged: (v) => setState(() => _selectedTypeId = v),
         ),
+        // Balance indicator for selected type
+        if (_selectedTypeId != null) Builder(builder: (_) {
+          final bal = widget.balances.firstWhere(
+            (b) => (b['leaveType']?['id'] ?? b['leaveTypeId']) == _selectedTypeId,
+            orElse: () => {},
+          );
+          if (bal.isEmpty) return const SizedBox.shrink();
+          final remaining = (bal['remainingDays'] as num?)?.toInt();
+          final credited  = (bal['creditedDays']  as num?)?.toInt() ?? (bal['credited'] as num?)?.toInt() ?? 0;
+          final isManual  = (bal['leaveType']?['accrual'] as String?) == 'MANUAL';
+          if (isManual) return const SizedBox.shrink();
+          final color = (remaining ?? 0) > 0 ? const Color(0xFF15803d) : const Color(0xFFb91c1c);
+          return Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: color.withAlpha(20),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withAlpha(60)),
+            ),
+            child: Row(children: [
+              Icon(Icons.info_outline, size: 14, color: color),
+              const SizedBox(width: 8),
+              Text('${remaining ?? 0} of $credited days remaining',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+            ]),
+          );
+        }),
         const SizedBox(height: 14),
 
         Row(children: [

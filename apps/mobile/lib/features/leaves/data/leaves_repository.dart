@@ -51,4 +51,22 @@ class LeavesRepository {
   Future<void> cancelLeave(String id) async {
     await _dio.delete('/leaves/my-requests/$id');
   }
+
+  Future<List<Map<String, dynamic>>> getTeamRequests() async {
+    try {
+      final resp = await _dio.get('/leaves/team-requests');
+      final data = resp.data['data'] ?? resp.data ?? [];
+      return (data as List?)?.cast<Map<String, dynamic>>() ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> approveTeamLeave(String id) async {
+    await _dio.post('/leaves/team-requests/$id/approve');
+  }
+
+  Future<void> rejectTeamLeave(String id, String reason) async {
+    await _dio.post('/leaves/team-requests/$id/reject', data: {'reason': reason});
+  }
 }

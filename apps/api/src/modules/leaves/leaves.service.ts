@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Prisma, Gender } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SmsService } from '../notifications/sms.service';
@@ -161,6 +161,53 @@ export class LeavesService {
       `Hi ${updated.employee.name.split(' ')[0]}, your ${updated.leaveType.name} leave request (${fmtDate(updated.fromDate)} – ${fmtDate(updated.toDate)}) has been REJECTED. Reason: ${reason} — BA HRMS`,
     );
     return updated;
+  }
+
+  // ─── Site Manager approval ─────────────────────────────────────────────────
+
+  async getTeamRequests(managerId: string) {
+    const manager = await this.prisma.employee.findUnique({
+      where: { id: managerId },
+      select: { defaultSiteId: true },
+    });
+    if (!manager?.defaultSiteId) return [];
+    return this.prisma.leaveRequest.findMany({
+      where: {
+        status: 'PENDING',
+        employee: { defaultSiteId: manager.defaultSiteId },
+        employeeId: { not: managerId },
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        employee:  { select: { id: true, name: true, phone: true } },
+        leaveType: { select: { id: true, name: true, paid: true } },
+      },
+    });
+  }
+
+  private async assertSamesite(managerId: string, requestId: string) {
+    const [manager, req] = await Promise.all([
+      this.prisma.employee.findUnique({ where: { id: managerId }, select: { defaultSiteId: true } }),
+      this.assertRequestExists(requestId),
+    ]);
+    const emp = await this.prisma.employee.findUnique({
+      where: { id: req.employeeId },
+      select: { defaultSiteId: true },
+    });
+    if (!manager?.defaultSiteId || manager.defaultSiteId !== emp?.defaultSiteId) {
+      throw new ForbiddenException('You can only manage leaves for employees at your site');
+    }
+    return req;
+  }
+
+  async approveRequestAsSiteManager(id: string, managerId: string) {
+    await this.assertSamesite(managerId, id);
+    return this.approveRequest(id, managerId);
+  }
+
+  async rejectRequestAsSiteManager(id: string, managerId: string, reason: string) {
+    await this.assertSamesite(managerId, id);
+    return this.rejectRequest(id, managerId, reason);
   }
 
   // ─── Employee self-service ──────────────────────────────────────────────────
@@ -360,7 +407,7 @@ export class LeavesService {
   }
 
   private async assertRequestExists(id: string) {
-    const r = await this.prisma.leaveRequest.findUnique({ where: { id }, select: { id: true, status: true } });
+    const r = await this.prisma.leaveRequest.findUnique({ where: { id }, select: { id: true, status: true, employeeId: true } });
     if (!r) throw new NotFoundException(`Leave request ${id} not found`);
     return r;
   }
