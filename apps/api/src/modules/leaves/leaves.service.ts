@@ -356,14 +356,19 @@ export class LeavesService {
     });
     const employees = await this.prisma.employee.findMany({
       where: { status: 'ACTIVE' },
-      select: { id: true, createdAt: true },
+      select: { id: true, joinedAt: true },
     });
+    const now  = new Date();
     const year = this.currentYear();
+    // Only credit employees who were present from the 1st of this month (joined on or before the 1st)
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     for (const lt of types) {
       const monthlyCredit = lt.daysEntitled / 12;
       for (const emp of employees) {
-        const monthsEmployed = (Date.now() - emp.createdAt.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+        // Skip if joined mid-month (after the 1st)
+        if (emp.joinedAt > firstOfMonth) continue;
+        const monthsEmployed = (now.getTime() - emp.joinedAt.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
         if (monthsEmployed < lt.eligibilityMinMonths) continue;
 
         if (lt.monthlyExpiry) {
