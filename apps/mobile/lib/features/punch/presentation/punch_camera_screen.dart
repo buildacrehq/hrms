@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import '../../../core/services/location_cache.dart';
 
 class PunchCaptureResult {
   final XFile photo;
@@ -145,51 +146,92 @@ class _PunchCameraScreenState extends State<PunchCameraScreen>
   }
 
   Future<void> _startGps() async {
-    if (mounted) {
-      setState(() {
-        _gpsReady = false;
-        _gpsFailed = false;
-        _gpsText = 'Getting location…';
-      });
+    // ── 1. Serve from cache if fresh (< 1 min) ──────────────────────────────
+    if (LocationCache.isValid) {
+      if (mounted) {
+        setState(() {
+          _position = LocationCache.position;
+          _gpsText  = LocationCache.address ??
+              '${_position!.latitude.toStringAsFixed(5)}°, ${_position!.longitude.toStringAsFixed(5)}°';
+          _gpsReady  = true;
+          _gpsFailed = false;
+        });
+      }
+      return;
     }
+
+    if (mounted) {
+      setState(() { _gpsReady = false; _gpsFailed = false; _gpsText = 'Getting location…'; });
+    }
+
+    // ── 2. Check permission ──────────────────────────────────────────────────
     try {
       var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.deniedForever ||
-          perm == LocationPermission.denied) {
+      if (perm == LocationPermission.deniedForever || perm == LocationPermission.denied) {
         if (mounted) {
-          setState(() {
-            _gpsFailed = true;
-            _gpsText = 'Location permission denied. Enable in Settings.';
-          });
+          setState(() { _gpsFailed = true; _gpsText = 'Location permission denied. Enable in Settings.'; });
         }
         return;
       }
+    } catch (_) {
+      if (mounted) {
+        setState(() { _gpsFailed = true; _gpsText = 'Location permission error.'; });
+      }
+      return;
+    }
 
+    // ── 3. Last-known position → unblock capture button immediately ──────────
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null && mounted) {
+        setState(() {
+          _position = last;
+          _gpsText  = '${last.latitude.toStringAsFixed(5)}°, ${last.longitude.toStringAsFixed(5)}°';
+          _gpsReady = true;
+        });
+      }
+    } catch (_) {
+      // No last known — that's fine, keep waiting for fresh fix
+    }
+
+    // ── 4. Fresh high-accuracy fix in background (upgrades interim silently) ─
+    try {
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       ).timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
+
+      // If within 50 m of previous location, reuse cached address (skip geocoding)
+      final reusedAddress = LocationCache.isNearCached(pos) && LocationCache.address != null;
+      final displayText   = reusedAddress
+          ? LocationCache.address!
+          : '${pos.latitude.toStringAsFixed(5)}°, ${pos.longitude.toStringAsFixed(5)}°';
+
+      LocationCache.update(pos, address: reusedAddress ? LocationCache.address : null);
+
       setState(() {
         _position = pos;
-        _gpsText = '${pos.latitude.toStringAsFixed(5)}°, ${pos.longitude.toStringAsFixed(5)}°';
+        _gpsText  = displayText;
         _gpsReady = true;
       });
 
-      // Reverse-geocode in background for human-readable address
-      _reverseGeocode(pos);
+      if (!reusedAddress) _reverseGeocode(pos);
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _gpsFailed = true;
-          _gpsText = 'Could not get location. Tap retry.';
-        });
+      // Fresh fetch failed — if we already have interim position, that's fine
+      if (!_gpsReady && mounted) {
+        setState(() { _gpsFailed = true; _gpsText = 'Could not get location. Tap retry.'; });
       }
     }
+  }
+
+  /// Force a fresh GPS fetch — called by the manual reload button.
+  Future<void> _forceReloadGps() async {
+    LocationCache.invalidate();
+    await _startGps();
   }
 
   Future<void> _reverseGeocode(Position pos) async {
@@ -214,34 +256,26 @@ class _PunchCameraScreenState extends State<PunchCameraScreen>
       final addr = data['address'] as Map<String, dynamic>? ?? {};
 
       final parts = <String>[];
-      // Include amenity (shop/restaurant name), house number, road, suburb, city
       for (final key in [
-        'amenity',
-        'house_number',
-        'road',
-        'suburb',
-        'neighbourhood',
-        'city_district',
-        'city',
-        'town',
-        'village',
+        'amenity', 'house_number', 'road', 'suburb',
+        'neighbourhood', 'city_district', 'city', 'town', 'village',
       ]) {
         final v = addr[key] as String?;
         if (v != null && v.isNotEmpty && !parts.contains(v)) parts.add(v);
         if (parts.length == 5) break;
       }
       final postcode = addr['postcode'] as String? ?? '';
-      final state = addr['state'] as String? ?? '';
-      final line = parts.join(', ');
-      String full = line;
+      final state    = addr['state']    as String? ?? '';
+      String full    = parts.join(', ');
       if (postcode.isNotEmpty) full += ' - $postcode';
       if (state.isNotEmpty && !full.contains(state)) full += ', $state';
 
       if (mounted && full.isNotEmpty) {
+        LocationCache.updateAddress(full);
         setState(() => _gpsText = full);
       }
     } catch (_) {
-      // Keep showing coordinates if geocoding fails
+      // Keep showing coordinates if geocoding fails — no crash
     }
   }
 
@@ -440,6 +474,15 @@ class _PunchCameraScreenState extends State<PunchCameraScreen>
                           height: 12,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white70),
+                        ),
+                      ],
+                      // Manual reload — shown when GPS is ready (cached or live)
+                      if (_gpsReady) ...[
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: _forceReloadGps,
+                          child: const Icon(Icons.refresh,
+                              size: 14, color: Colors.white54),
                         ),
                       ],
                     ],
