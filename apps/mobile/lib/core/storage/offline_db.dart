@@ -46,4 +46,12 @@ class OfflineDb extends _$OfflineDb {
       updates: {offlinePunches},
     );
   }
+
+  /// Delete synced records older than 7 days to keep the DB lean.
+  Future<void> purgeSynced() async {
+    final cutoff = DateTime.now().subtract(const Duration(days: 7));
+    await (delete(offlinePunches)
+          ..where((t) => t.synced.equals(true) & t.createdAt.isSmallerThanValue(cutoff)))
+        .go();
+  }
 }

@@ -240,6 +240,19 @@ export class LeavesService {
       }
     }
 
+    // Reject if an overlapping PENDING/APPROVED leave already exists
+    const overlap = await this.prisma.leaveRequest.findFirst({
+      where: {
+        employeeId,
+        status: { in: ['PENDING', 'APPROVED'] },
+        fromDate: { lte: to },
+        toDate:   { gte: from },
+      },
+    });
+    if (overlap) {
+      throw new BadRequestException('You already have a leave request for these dates');
+    }
+
     const status = leaveType.approvalMode === 'AUTO' ? 'APPROVED' : 'PENDING';
 
     const created = await this.prisma.leaveRequest.create({

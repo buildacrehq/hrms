@@ -40,6 +40,7 @@ class _PunchCameraScreenState extends State<PunchCameraScreen>
   bool _requireFaceDetection = true; // default safe — overridden by API setting
   bool _detecting = false;
   bool _faceError = false;
+  bool _gpsRefreshing = false;
 
   @override
   void initState() {
@@ -230,8 +231,11 @@ class _PunchCameraScreenState extends State<PunchCameraScreen>
 
   /// Force a fresh GPS fetch — called by the manual reload button.
   Future<void> _forceReloadGps() async {
+    if (_gpsRefreshing) return;
+    if (mounted) setState(() => _gpsRefreshing = true);
     LocationCache.invalidate();
     await _startGps();
+    if (mounted) setState(() => _gpsRefreshing = false);
   }
 
   Future<void> _reverseGeocode(Position pos) async {
@@ -325,12 +329,14 @@ class _PunchCameraScreenState extends State<PunchCameraScreen>
       }
       // ────────────────────────────────────────────────────────────────────────
 
-      if (mounted) {
+      if (mounted && _position != null) {
         Navigator.of(context).pop(PunchCaptureResult(
           photo: photo,
           position: _position!,
           address: _gpsText,
         ));
+      } else if (mounted) {
+        setState(() { _capturing = false; _detecting = false; });
       }
     } catch (_) {
       if (mounted) setState(() { _capturing = false; _detecting = false; });
@@ -476,13 +482,17 @@ class _PunchCameraScreenState extends State<PunchCameraScreen>
                               strokeWidth: 2, color: Colors.white70),
                         ),
                       ],
-                      // Manual reload — shown when GPS is ready (cached or live)
+                      // Manual reload — shown when GPS is ready
                       if (_gpsReady) ...[
                         const SizedBox(width: 6),
                         GestureDetector(
-                          onTap: _forceReloadGps,
-                          child: const Icon(Icons.refresh,
-                              size: 14, color: Colors.white54),
+                          onTap: _gpsRefreshing ? null : _forceReloadGps,
+                          child: _gpsRefreshing
+                              ? const SizedBox(
+                                  width: 12, height: 12,
+                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white54),
+                                )
+                              : const Icon(Icons.refresh, size: 14, color: Colors.white54),
                         ),
                       ],
                     ],

@@ -29,27 +29,47 @@ class SyncService {
     for (final punch in pending) {
       if (punch.retryCount >= 5) continue;
       try {
-        String? photoKey = punch.photoKey;
+        String photoKey = punch.photoKey ?? '';
 
-        // Upload photo if not yet uploaded
-        if (punch.photoPath != null && photoKey == null) {
-          final uploadUrlResp = await _dio.post('/punches/upload-url', data: {'ext': 'jpg'});
-          final uploadUrl = uploadUrlResp.data['data']['uploadUrl'] as String;
-          photoKey = uploadUrlResp.data['data']['key'] as String;
-
+        // Upload photo only if we have a local file and no key yet
+        if (punch.photoPath != null && photoKey.isEmpty) {
           final file = File(punch.photoPath!);
-          await _dio.put(uploadUrl,
-              data: file.openRead(),
-              options: Options(headers: {'Content-Type': 'image/jpeg', 'Content-Length': file.lengthSync()}));
+          if (await file.exists()) {
+            try {
+              final uploadUrlResp = await _dio.post(
+                '/punches/upload-url',
+                data: {'type': punch.type},
+              );
+              final uploadUrl  = uploadUrlResp.data['data']['uploadUrl'] as String;
+              final uploadToken = uploadUrlResp.data['data']['uploadToken'] as String? ?? '';
+              photoKey = uploadUrlResp.data['data']['photoKey'] as String;
+
+              final bytes = await file.readAsBytes();
+              final uploadClient = Dio();
+              await uploadClient.put(
+                uploadUrl,
+                data: bytes,
+                options: Options(headers: {
+                  'Content-Type': 'image/jpeg',
+                  'Authorization': 'Bearer $uploadToken',
+                }),
+              );
+            } catch (_) {
+              // Photo upload failed — submit punch without photo rather than lose it
+              photoKey = '';
+            }
+          }
+          // File missing — submit punch without photo rather than abandon it
         }
 
         await _dio.post('/punches', data: {
-          'type': punch.type,
+          'type':            punch.type,
           'timestampDevice': punch.timestampDevice,
-          if (punch.latitude != null) 'latitude': punch.latitude,
-          if (punch.longitude != null) 'longitude': punch.longitude,
-          if (punch.accuracy != null) 'accuracy': punch.accuracy,
-          if (photoKey != null) 'photoKey': photoKey,
+          'lat':             punch.latitude  ?? 0,
+          'long':            punch.longitude ?? 0,
+          'accuracy':        punch.accuracy  ?? 0,
+          'photoKey':        photoKey,
+          'syncedOffline':   true,
         });
 
         await _db.markSynced(punch.id);
@@ -57,6 +77,7 @@ class SyncService {
         await _db.incrementRetry(punch.id);
       }
     }
+    await _db.purgeSynced();
   }
 
   Future<void> flush() => _flush();
